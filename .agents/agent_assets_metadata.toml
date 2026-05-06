@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "2oPTi9BbWRfxd_t1SmqEa"
+uri = "file://README.md"
+type = "text"
+title = "Psychology 101 — Marketing README"

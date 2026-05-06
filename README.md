@@ -1,128 +1,42 @@
-# Philosophy 101 — AI-Powered Online Course
+# 🧠 PSYCHOLOGY 101
 
-A complete online college course shell for **PHIL 101: Introduction to Philosophy**, built to satisfy the [Quality Matters Higher Education Rubric, 7th Edition](https://www.qualitymatters.org/qa-resources/rubric-standards/higher-ed-rubric) (Specific Review Standards 1.1 – 8.7). The course is taught by an AI Tutor powered by **Anthropic Claude Sonnet 4.5** that speaks for the instructor of record (Dr. Lawrence Dodge) and conducts Socratic dialogue with each student.
+https://psych101.example
 
-The full QM crosswalk is in [`qm_crosswalk.md`](./qm_crosswalk.md).
+**An AI-Augmented Online College Course in the Science of Mind and Behavior**
 
----
+## 🧩 Overview
 
-## What's in the course
+Psychology 101 is a fully online, asynchronous undergraduate course that teaches the foundations of psychological science — how people think, learn, remember, and influence one another. Across 13 sequenced modules, students work through landmark studies (Pavlov, Skinner, Zimbardo, Milgram, Loftus) and the core tools of careful psychological reasoning, culminating in a short term paper analyzing a contemporary article in psychology.
 
-- **7 pages**: Start Here, Syllabus, Modules, AI Tutor, Assessments, Support, Accessibility.
-- **13 sequential modules**, gated so each unlocks once the previous is submitted (override with `?admin=true`). All curriculum text is loaded **verbatim** from the source textbook (`Clean_Phil_101_Dodge_Book.docx`):
-  1. Discussion 1 — Branches of Philosophy
-  2. Essay 1 — Empirical vs Philosophical Questions
-  3. Discussion 2 — Plato's Cave
-  4. Essay 2 — Empiricism vs Rationalism
-  5. Discussion 3 — Logical Fallacies
-  6. Essay 3 — Inductive vs Deductive Reasoning
-  7. Discussion 4 — Free Will
-  8. Essay 4 — Personal Identity
-  9. Discussion 5 — The Existence of God
-  10. Essay 5 — The Problem of Evil
-  11. Discussion 6 — Utilitarianism vs Deontology
-  12. Discussion 7 — The Ring of Gyges
-  13. Term Paper — Applied Ethics
-- **AI Tutor** with persistent, per-module conversation history. Streams responses via Server-Sent Events. System-prompted to teach Socratically and refuse to write assignments for students.
-- **Practice Critique** tool: the AI generates a deliberately mediocre answer that the student critiques (active-learning self-check).
-- **Submission tracking** with database persistence.
+Unlike generic AI study tools that hand students finished answers, Psychology 101 is built around a strict pedagogical principle: the AI is a tutor, not a ghostwriter. It explains, tests, coaches, and gives formative feedback — but it never writes the assignment for the student. Every module enforces a deliberate read → think → draft → critique → submit loop, with progress unlocking only when prior work is genuinely complete.
 
----
+## 👥 Who It's For
 
-## Architecture
+- **Undergraduate students** — taking an introductory psychology course and wanting structured, on-demand instruction outside of lecture
+- **Independent learners and career switchers** — who want a rigorous, college-level grounding in psychology without enrolling in a degree program
+- **Instructors and TAs** — looking for a ready-to-deploy course shell with built-in AI scaffolding and academic-integrity guardrails
+- **High school students preparing for AP Psychology** — needing a deeper conceptual foundation than a study guide can provide
+- **Anyone** — who has ever opened an intro psych textbook, gotten lost in jargon, and wished they had a patient tutor on call
 
-This is a pnpm monorepo (`pnpm-workspace.yaml`) with three relevant artifacts:
+## ⚙️ Core Capabilities
 
-```
-artifacts/
-├── api-server/      # Express 5 + Drizzle ORM + Anthropic SDK (port 8080, mounted at /api)
-├── phil-101/        # React + Vite + shadcn/ui + wouter (mounted at /)
-└── mockup-sandbox/  # Design canvas (not used in the live course)
+- **13-Module Sequenced Curriculum** — Six discussions, five essays, and a culminating term paper covering branches of psychology, conditioning, memory, the mind-brain problem, mental illness, cognitive biases, the bystander effect, and contemporary readings from Kahneman, Dweck, and Pinker & Bloom.
+- **AI Tutor (Claude-powered)** — A conversational tutor scoped to the current module that answers conceptual questions, walks through landmark studies, and probes the student's reasoning — without leaking the assignment answer.
+- **Per-Module Study Guide** — One-click generation of a focused study guide with key concepts, core arguments, common pitfalls, and self-check questions.
+- **Step-by-Step Tutorial Walkthroughs** — A guided, numbered breakdown of each reading with short examples and a "what to do next" nudge toward the assignment.
+- **Audio Podcast Explainers** — A 2–3 minute single-host script for each module, designed to be listened to on a commute or walk.
+- **Plain-Language Reading Rewrites** — A clarity-pass rewrite of every reading, preserving every claim and example while simplifying sentence structure and vocabulary.
+- **Formative Draft Feedback** — Students get one round of structured, instructor-style feedback on a draft before final submission. The AI describes what to revise and why — it never rewrites or supplies phrasings.
+- **Mediocre-Answer Critique Exercise** — The system can generate a deliberately weak student answer that learners must critique, training the metacognitive skill of recognizing flawed reasoning.
+- **Sequential Unlocking & Progress Tracking** — Modules unlock in order; an Assessments page tracks completed work, points earned, and remaining requirements.
+- **Syllabus, Accessibility, and Support Pages** — A full course shell with grading policy, learning outcomes, accessibility statement, and student-support information.
 
-lib/
-├── api-spec/                    # OpenAPI 3.1 contract — source of truth
-├── api-zod/                     # Generated Zod validators (used by the server)
-├── api-client-react/            # Generated React Query hooks (used by the client)
-├── db/                          # Drizzle schema + Postgres client
-└── integrations-anthropic-ai/   # Anthropic SDK wrapper (uses Replit AI integration)
-```
+## 🎯 What Makes It Different
 
-### Stack
-
-- **Backend**: Express 5, TypeScript, Drizzle ORM, PostgreSQL, Pino logging, HMAC-signed session cookies (`SESSION_SECRET`).
-- **AI**: `@anthropic-ai/sdk` via the Replit Anthropic integration (model `claude-sonnet-4-5`). Streaming chat via `messages.stream`.
-- **Frontend**: React 18, Vite, TypeScript, wouter, TanStack Query, shadcn/ui (Radix primitives), Tailwind, lucide-react.
-- **API contract**: OpenAPI 3.1 → Orval generates both the React Query hooks and the Zod validators in one pass.
-
-### Database tables (`lib/db/src/schema.ts`)
-
-- `students` — id, email (unique), name, intro, createdAt
-- `submissions` — id, studentId, moduleId, content, createdAt
-- `tutor_conversations` — id, studentId, moduleId (one per pair)
-- `tutor_messages` — id, conversationId, role, content, createdAt
-
-### Key API endpoints
-
-| Method | Path | Purpose |
-| --- | --- | --- |
-| GET  | `/api/healthz` | Liveness |
-| POST | `/api/auth/login` | Login or auto-register by email + name |
-| POST | `/api/auth/logout` | Clear session cookie |
-| GET  | `/api/auth/me` | Current student |
-| GET  | `/api/progress` | Completed modules + intro text |
-| POST | `/api/progress/intro` | Save self-introduction |
-| GET  | `/api/submissions` | List the student's submissions |
-| POST | `/api/submissions` | Submit a module |
-| GET  | `/api/submissions/module/:moduleId` | Latest submission for a module |
-| GET  | `/api/tutor/:moduleId/conversation` | Load tutor history |
-| POST | `/api/tutor/:moduleId/message` | Send message — **streams SSE** |
-| POST | `/api/tutor/:moduleId/critique` | Generate a mediocre answer for the Practice Critique tool |
-
----
-
-## Running locally
-
-This project runs in Replit; both artifacts start as workflows. Manually:
-
-```bash
-# typecheck everything
-pnpm run typecheck
-
-# regenerate API hooks + Zod schemas after editing lib/api-spec/openapi.yaml
-pnpm --filter @workspace/api-spec run codegen
-
-# push DB schema changes (dev only)
-pnpm --filter @workspace/db run push
-
-# run the API server (port 8080, served behind /api)
-pnpm --filter @workspace/api-server run dev
-
-# run the web app (Vite, served at /)
-pnpm --filter @workspace/phil-101 run dev
-```
-
-In Replit, use **Restart Workflow** for `artifacts/api-server: API Server` and `artifacts/phil-101: web` instead of running these commands directly.
-
-### Required environment variables
-
-| Var | Purpose |
-| --- | --- |
-| `DATABASE_URL` | Postgres connection (provided by Replit) |
-| `SESSION_SECRET` | HMAC key for session cookies |
-| `ANTHROPIC_*` (provided by integration) | Anthropic API access via the Replit AI integration — no key handling required |
-
----
-
-## Academic integrity & AI policy
-
-- The AI Tutor is explicitly system-prompted to refuse to write assignments for students.
-- Every tutor message and every submission is persisted to the database, so the human instructor of record can audit engagement.
-- The on-app policy is stated on the Start Here page and the Syllabus page, and is referenced in `qm_crosswalk.md`.
-
-## Accessibility
-
-WCAG 2.1 AA-targeted. Built on Radix UI primitives, semantic HTML, full keyboard navigation, visible focus rings, ARIA labels on all interactive controls. Vendor accessibility statements and the keyboard map are linked from `/accessibility`.
-
-## Deployment
-
-The pnpm monorepo deploys via Replit Deployments. The `api-server` artifact builds to a single CJS bundle (`esbuild`) and serves on `PORT`. The `phil-101` artifact builds to static assets (`vite build`) and is served by Replit's static rewriter. Path-based routing is handled by the Replit reverse proxy per `artifact.toml`.
+- **The AI refuses to do the work for you** — Every prompt is engineered around formative feedback and Socratic questioning. No drafting. No phrasings. No model-answer leaks.
+- **Modules unlock sequentially** — Students cannot skip ahead. The course enforces the actual learning sequence rather than letting users cherry-pick topics.
+- **Built around landmark studies, not just definitions** — Pavlov, Skinner, Zimbardo, Milgram, Loftus, Asch, Darley & Latané — each module is anchored in a real study with named methodology, results, and limitations.
+- **Drafts get one round of instructor-grade critique** — Mirrors how a good TA actually works: read the draft, name what's working, name what's weak, ask Socratic questions, point at the next revision step.
+- **Five distinct AI study modes per module** — Tutor chat, study guide, tutorial, podcast script, and clarity rewrite — each with its own prompt discipline, so students learn the same material from multiple angles.
+- **Academic-integrity-first prompt design** — Every system prompt explicitly forbids writing assignment text, supplying answers, or quoting the instructor's reference standard.
+- **Designed for a real grading scheme** — Discussions and essays carry actual point values; the term paper anchors the course; the assessment view sums it all up.
