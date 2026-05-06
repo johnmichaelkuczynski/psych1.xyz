@@ -1,0 +1,86 @@
+ADDENDUM PROMPT FOR REPLIT AGENT:
+Add a new feature called Integrity Canvas to the course. This replaces the current generic submission textbox on every assignment in every module (all discussions, essays, term paper outline, term paper). Timed exams, if any are added later, are exempt.
+STRUCTURE: Each assignment now has TWO separate, clearly labeled boxes:
+BOX 1 — DRAFT BOX (labeled clearly: "Draft Workshop — get AI feedback before writing your submission")
+
+Standard textarea. Paste allowed here. Unlimited length.
+Student writes ONE draft. Hits "Get Feedback" button.
+AI returns a thorough breakdown organized into five sections: (1) Does the draft answer the prompt? (2) Is the argument structure clear? (3) Where is the reasoning weak? (4) What's missing? (5) What would I revise first?
+After feedback is returned, the draft box becomes read-only. Student gets ONE draft. The feedback stays visible on the page.
+The AI never rewrites text for the student. It describes what to change, not how to phrase it.
+The AI is given the module's model response (from the course doc) as a reference standard, but is instructed not to compare directly or quote it — just to know what proficient looks like.
+
+BOX 2 — INTEGRITY CANVAS (labeled clearly: "Submission Canvas — type your final answer here")
+This is where the student writes the actual submission. It is NOT a normal textarea. It is a custom typing canvas with these behaviors:
+Paste prevention:
+
+Pasting from outside the canvas is blocked.
+The student CAN copy and paste within the canvas itself (cutting and rearranging their own text is allowed).
+Detection logic: track the source of clipboard content. If the clipboard content originated from text typed inside this same canvas in this session, paste is allowed. Otherwise blocked, with a brief inline message: "Paste from outside the canvas is disabled. Please type your response."
+
+Real-time GPTZero scoring:
+
+As the student types, the canvas sends text chunks to the GPTZero API for scoring.
+Throttle: send chunks when the student pauses typing for 2+ seconds, or every 200 characters, whichever comes first. Use the paid GPTZero API; the API key is stored as a Replit secret named GPTZERO_API_KEY.
+A traffic-light bar appears at the top of the canvas: green (clean), yellow (questionable), red (AI detected). The bar updates live as scores come back.
+Inline highlighting: suspect passages are highlighted directly in the canvas — yellow background for questionable passages, red background for AI-detected passages. Clean text has no highlight.
+A toggle button labeled "Highlighting: ON / OFF" lets the student turn highlighting off if distracting. The bar at the top stays on regardless.
+
+Red-state warning:
+
+When the bar enters red and stays in red for 30+ seconds of typing, a non-blocking inline notice appears: "AI-generated content detected in your writing. Continuing to submit work flagged this way may negatively affect your grade. If you are not using AI, please review your writing approach to understand why the system is flagging this."
+The notice can be dismissed by the student. It does NOT block typing or submission.
+
+Autosave:
+
+The canvas autosaves every 5 seconds to the database, scoped to the student's session and assignment.
+If the student leaves and returns, their work resumes exactly where they left off, including the bar state and highlights.
+
+Submit flow:
+
+When the student clicks Submit, if the bar is currently in red, a confirmation dialog appears: "Your submission is currently flagged as likely AI-generated (GPTZero score: X.XX). Submitting will send this to your instructor with the flag attached. Submit anyway?" — with two buttons: [Submit Anyway] and [Go Back and Revise].
+The student can always submit. There is no hard block. (A student may have a legitimate reason: prior arrangement with the instructor, an assignment that is supposed to sound AI-like, or a false positive.)
+
+Accommodation toggle (admin-controlled):
+
+An admin/instructor can mark a specific student as accommodated. For accommodated students, paste prevention is disabled, GPTZero monitoring is disabled, and inline highlighting is disabled. The submission still goes through normally.
+
+LOGGING (full record per submission):
+Every submission stores the following in the database, accessible to instructors via an admin dashboard:
+
+Final submitted text + final GPTZero score.
+Complete revision history: every keystroke and edit captured as a timeline. Format: a sequence of events with timestamps — characters typed, characters deleted, cursor moves, paste attempts (blocked or allowed). The instructor can replay the writing session like a video, watching the submission get composed.
+GPTZero score history: every score returned during the typing session, with timestamps. Instructor sees the full curve of how the score evolved.
+Suspicious activity report: an automatically generated summary flagging any of the following patterns:
+
+Sustained time in red state (>2 minutes cumulative)
+Large blocks of text appearing faster than a human could plausibly type (>120 WPM sustained for >30 seconds)
+Long pauses (>60 seconds) followed by long bursts of fluent text (suggesting reading-and-paraphrasing from another source)
+Paste-from-outside attempts (count and timestamps, even though blocked)
+Bar state transitions (count of times the bar moved from green to red)
+Highlighting toggled off while bar was in yellow or red
+The report is a structured object the instructor can view as a brief summary or expand for full detail.
+
+
+
+INSTRUCTOR DASHBOARD (new admin view):
+Add a new admin-only route /admin/submissions accessible to users with admin role. For each submission, the instructor sees:
+
+Student name, module, assignment, submission timestamp
+Final submitted text
+Final GPTZero score (color-coded)
+"View Replay" button — opens the keystroke-by-keystroke replay
+"View Activity Report" button — opens the suspicious activity summary
+"Mark as Reviewed" / "Flag for Follow-up" buttons
+
+INTEGRITY DISCLOSURE:
+Update the Academic Integrity page (under Assessments) to clearly state, in plain language:
+
+Submissions are typed into a monitored canvas.
+Pasting from outside the canvas is disabled.
+Typing patterns and final text are analyzed using GPTZero.
+Submissions flagged as likely AI-generated are reviewed by the instructor.
+The full keystroke history of every submission is logged and visible to the instructor.
+Students with documented accommodations may have monitoring disabled — contact the instructor.
+
+This disclosure must be visible to the student before they begin any assignment. Add a one-time "I understand" acknowledgment prompt the first time a student opens any module's assignment.

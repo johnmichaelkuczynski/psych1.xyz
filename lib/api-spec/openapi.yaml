@@ -1,0 +1,392 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Philosophy 101 course API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: auth
+    description: Student authentication
+  - name: progress
+    description: Course progress
+  - name: submissions
+    description: Assessment submissions
+  - name: tutor
+    description: AI tutor (Claude Sonnet 4.5)
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /auth/login:
+    post:
+      operationId: login
+      tags: [auth]
+      summary: Login or register a student by email
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginBody"
+      responses:
+        "200":
+          description: Logged in
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Student"
+  /auth/logout:
+    post:
+      operationId: logout
+      tags: [auth]
+      summary: Log out current student
+      responses:
+        "204":
+          description: Logged out
+  /auth/me:
+    get:
+      operationId: getCurrentStudent
+      tags: [auth]
+      summary: Get current logged-in student
+      responses:
+        "200":
+          description: Current student or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CurrentStudent"
+  /progress:
+    get:
+      operationId: getProgress
+      tags: [progress]
+      summary: List completed modules and current intro
+      responses:
+        "200":
+          description: Progress info
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+  /progress/intro:
+    post:
+      operationId: saveIntro
+      tags: [progress]
+      summary: Save student self-introduction
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveIntroBody"
+      responses:
+        "200":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Progress"
+  /submissions:
+    get:
+      operationId: listSubmissions
+      tags: [submissions]
+      summary: List all of the current student's submissions
+      responses:
+        "200":
+          description: Submissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Submission"
+    post:
+      operationId: createSubmission
+      tags: [submissions]
+      summary: Submit an assessment for a module
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateSubmissionBody"
+      responses:
+        "201":
+          description: Submission created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Submission"
+  /submissions/module/{moduleId}:
+    get:
+      operationId: getSubmissionForModule
+      tags: [submissions]
+      summary: Get current student's most recent submission for a module
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Submission or null
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SubmissionOrNull"
+  /tutor/{moduleId}/conversation:
+    get:
+      operationId: getTutorConversation
+      tags: [tutor]
+      summary: Get or create the tutor conversation for a module
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Conversation with messages
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TutorConversation"
+  /tutor/{moduleId}/message:
+    post:
+      operationId: sendTutorMessage
+      tags: [tutor]
+      summary: Send a message to the tutor (SSE stream of assistant response)
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SendTutorMessageBody"
+      responses:
+        "200":
+          description: SSE stream
+          content:
+            text/event-stream: {}
+  /tutor/{moduleId}/critique:
+    post:
+      operationId: generateCritiqueAnswer
+      tags: [tutor]
+      summary: Generate a deliberately weak AI answer for the critique exercise
+      parameters:
+        - name: moduleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: A weak AI-generated answer for the student to critique
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CritiqueAnswer"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    LoginBody:
+      type: object
+      properties:
+        email:
+          type: string
+        name:
+          type: string
+      required:
+        - email
+        - name
+    Student:
+      type: object
+      properties:
+        id:
+          type: integer
+        email:
+          type: string
+        name:
+          type: string
+        intro:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+        isAdmin:
+          type: boolean
+        accommodated:
+          type: boolean
+        integrityAckAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+      required:
+        - id
+        - email
+        - name
+        - intro
+        - createdAt
+        - isAdmin
+        - accommodated
+        - integrityAckAt
+    CurrentStudent:
+      type: object
+      properties:
+        student:
+          oneOf:
+            - $ref: "#/components/schemas/Student"
+            - type: "null"
+      required:
+        - student
+    Progress:
+      type: object
+      properties:
+        completedModuleIds:
+          type: array
+          items:
+            type: string
+        intro:
+          type: ["string", "null"]
+      required:
+        - completedModuleIds
+        - intro
+    SaveIntroBody:
+      type: object
+      properties:
+        intro:
+          type: string
+      required:
+        - intro
+    Submission:
+      type: object
+      properties:
+        id:
+          type: integer
+        moduleId:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        aiScore:
+          oneOf:
+            - type: number
+            - type: "null"
+          description: Probability (0–1) that the submission was AI-generated, per GPTZero. Null while the check is pending or unavailable.
+        aiClass:
+          oneOf:
+            - type: string
+            - type: "null"
+          description: GPTZero predicted class — typically "human", "ai", or "mixed".
+        aiCheckedAt:
+          oneOf:
+            - type: string
+              format: date-time
+            - type: "null"
+        aiStatus:
+          type: string
+          enum: [pending, completed, failed]
+          description: Lifecycle of the GPTZero check for this submission.
+      required:
+        - id
+        - moduleId
+        - content
+        - createdAt
+        - aiScore
+        - aiClass
+        - aiCheckedAt
+        - aiStatus
+    SubmissionOrNull:
+      type: object
+      properties:
+        submission:
+          oneOf:
+            - $ref: "#/components/schemas/Submission"
+            - type: "null"
+      required:
+        - submission
+    CreateSubmissionBody:
+      type: object
+      properties:
+        moduleId:
+          type: string
+        content:
+          type: string
+      required:
+        - moduleId
+        - content
+    TutorMessage:
+      type: object
+      properties:
+        id:
+          type: integer
+        role:
+          type: string
+        content:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - role
+        - content
+        - createdAt
+    TutorConversation:
+      type: object
+      properties:
+        id:
+          type: integer
+        moduleId:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: "#/components/schemas/TutorMessage"
+      required:
+        - id
+        - moduleId
+        - messages
+    SendTutorMessageBody:
+      type: object
+      properties:
+        content:
+          type: string
+      required:
+        - content
+    CritiqueAnswer:
+      type: object
+      properties:
+        answer:
+          type: string
+      required:
+        - answer

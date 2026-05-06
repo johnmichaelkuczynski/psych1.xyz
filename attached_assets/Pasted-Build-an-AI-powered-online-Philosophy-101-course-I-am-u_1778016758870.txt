@@ -1,0 +1,138 @@
+Build an AI-powered online Philosophy 101 course. I am uploading two reference documents:
+
+Clean_Phil_101_Dodge_Book.docx — the complete course content (all discussions, essays, model responses, term paper assignments). This is the curriculum. Do not modify it. Use it verbatim as the source of all course material.
+StandardsfromtheQMHigherEducationRubric_Rev_7.pdf — the Quality Matters Higher Education Rubric, 7th Edition. The course must satisfy every standard in this rubric. Read it before building.
+
+Build a single-page web application with the following structure and behavior.
+
+TOP NAVIGATION (always visible): Start Here | Syllabus | Modules | AI Tutor | Assessments | Support | Accessibility
+
+PAGE 1: START HERE (satisfies QM Standards 1.1–1.9)
+Sections, in order:
+
+How to begin — numbered 5-step list: (1) Read the syllabus, (2) Review course objectives, (3) Begin Module 1, (4) Use the AI Tutor whenever stuck, (5) Submit assessments at the end of each module.
+How this course works — 200-word explanation of the AI tutor model: the tutor presents material, asks questions, pushes back on weak answers, and assesses understanding. The tutor is the instructor of record from the student's perspective.
+Communication guidelines — AI tutor responds immediately; written feedback within 48 hours; questions about grades go to [INSTITUTION CONTACT].
+Course and institutional policies — placeholder text: [INSTITUTION POLICY LINKS HERE — Code of Conduct, Academic Integrity Policy, FERPA Notice].
+Minimum technology requirements — modern browser (Chrome, Firefox, Safari, Edge — current or one version back), stable internet connection, no plugins required.
+Technical and digital information literacy skills expected — basic web navigation, ability to type responses, ability to read on screen.
+Required prior knowledge — none. College-level reading proficiency assumed.
+Instructor self-introduction — the AI tutor introduces itself in 250 words. Welcoming tone. Explains what it is, what it can do, what it cannot do, how to interact with it, what to expect.
+Student introduction — first interaction in Module 1 prompts the student to introduce themselves and explain why they're taking the course. Log this and reference it in later interactions.
+
+
+PAGE 2: SYLLABUS (satisfies QM Standards 2.1–2.5)
+Sections:
+
+Course-level learning objectives — 6 objectives, each using a measurable verb (identify, analyze, evaluate, construct, defend, distinguish). Examples:
+
+Identify and distinguish the main branches of philosophy (epistemology, metaphysics, ethics).
+Analyze classical philosophical arguments using the structure of premises and conclusions.
+Evaluate competing positions on knowledge, reality, and morality.
+Construct an original philosophical argument supported by reasons.
+Defend a thesis against objections.
+Distinguish philosophical questions from empirical questions.
+
+
+Module-level objectives — for each of the 13 assignments in the course doc, write 2 measurable objectives that ladder up to the course-level objectives. Display them at the top of each module page.
+Alignment statement — brief table showing how each module's activities and assessments connect to course-level objectives.
+Course level — 100-level introductory course; objectives reflect introductory mastery, not advanced specialization.
+
+
+PAGE 3: MODULES (satisfies QM Standards 4.1–4.5, 5.1–5.4)
+Build 13 modules, one per item in the course doc, in this exact order:
+
+Discussion 1: Branches of Philosophy
+Essay 1: The Allegory of the Cave
+Discussion 2: Truth-telling, Lying, Bullshit
+Essay 2: Skepticism
+Discussion 3: Gettier Cases
+Essay 3: Gettier Problems
+Discussion 4: Mind/Body Dualism
+Essay 4: The Euthyphro Dilemma
+Discussion 5: The Problem of Evil
+Essay 5: Frankfurt Cases
+Discussion 6: Moral Luck
+Discussion 7: Gyges Ring
+Term Paper (outline + final paper)
+
+Each module page contains, in this order:
+
+Module title
+Module objectives (2 per module)
+Reading: the prompt and explanatory material from the course doc, verbatim
+AI Tutor session button (launches tutor for that module's topic)
+Assignment prompt (from course doc, verbatim)
+Model response (from course doc, verbatim — labeled "Model Response: read after submitting your own")
+Submit Assessment button
+
+Gating: Modules unlock sequentially. Student must complete the assessment in Module N before Module N+1 unlocks. Show a progress bar at the top of the Modules page.
+Instructor/admin override: include a toggle (URL parameter ?admin=true) that unlocks all modules for testing.
+
+PAGE 4: AI TUTOR (satisfies QM Standards 5.1–5.4, 6.1–6.2)
+Persistent chat interface. The tutor:
+
+Has been given the entire course content as context
+Presents material from the current module when asked
+Asks the student Socratic questions
+Pushes back on weak or vague answers
+Provides counterarguments
+Logs every interaction (timestamp, module, exchange)
+
+Plan for Regular and Substantive Interaction (RSI): include a clearly visible link on this page labeled "How interaction works in this course" that opens a 2-page document explaining: (a) federal RSI requirements, (b) how the AI tutor satisfies them through logged, adaptive, content-expert dialogue, (c) frequency expectations (minimum one tutor session per module), (d) the human instructor of record's oversight role.
+
+PAGE 5: ASSESSMENTS (satisfies QM Standards 3.1–3.6)
+Sections:
+
+Grading policy — total points: each Discussion 50 pts (×7 = 350), each Essay 50 pts (×5 = 250), Term Paper Outline 100 pts, Term Paper 100 pts. Total = 800 pts. Letter grade scale: 90%+ A, 80–89% B, 70–79% C, 60–69% D, below 60% F.
+Late policy — [INSTITUTION POLICY] placeholder.
+Rubric — single 4-level rubric (Exemplary / Proficient / Developing / Beginning) with descriptors covering: argument quality, use of evidence, clarity of writing, engagement with course material.
+Assessment types — three types are used:
+
+Written submission (discussions, essays, term paper)
+AI tutor dialogue (logged conversation evaluated for depth and engagement)
+AI critique exercise (student is shown an AI-generated answer and must identify weaknesses)
+
+
+Feedback timeline — AI tutor responses immediate; written feedback within 48 hours.
+Academic integrity guidance — three subsections: (a) "What counts as your work in this course," (b) "How AI is used in this course — by you and by us," (c) "What constitutes a violation." Be explicit: students may use the course's own AI tutor freely. Students must not submit AI-generated text as their own original written work for essays and the term paper. Each written assignment must be paired with a brief follow-up tutor dialogue verifying the student's understanding of what they submitted.
+
+
+PAGE 6: SUPPORT (satisfies QM Standards 7.1–7.4)
+Four placeholder sections, each with a brief description and a [LINK] placeholder for the institution to fill in:
+
+Technical support
+Accessibility services and accommodations
+Academic support services (tutoring, writing center)
+Student services (advising, counseling, financial aid)
+
+
+PAGE 7: ACCESSIBILITY (satisfies QM Standards 8.1–8.7, 6.4)
+Sections:
+
+Accessibility statement — this course is designed to meet WCAG 2.1 AA standards.
+Specific compliance — keyboard-navigable, screen-reader-compatible, sufficient color contrast (4.5:1 minimum), alt text on all images, captions on all video, transcripts on all audio, semantic heading hierarchy.
+Vendor accessibility statements — links/placeholders for: hosting provider, LLM provider (OpenAI/Anthropic), any embedded tools.
+Data privacy statement — what student data is logged (interactions, submissions, timestamps), where it's stored, retention period, who has access, FERPA compliance, what the LLM provider does with the data.
+How to request accommodations — [INSTITUTION DISABILITY SERVICES LINK] placeholder.
+
+
+TECHNICAL REQUIREMENTS:
+
+All text uses semantic HTML (proper heading hierarchy h1 → h2 → h3, no skipped levels).
+All images have alt text.
+All interactive elements are keyboard-reachable (Tab navigation works).
+Color contrast minimum 4.5:1 for normal text.
+Mobile-responsive layout.
+The AI tutor backend uses the Anthropic Claude API or OpenAI API (your choice).
+Data persistence: student progress, submissions, and tutor logs stored in a database (use Replit's built-in database or SQLite).
+Login system: simple email + password; admin override via URL parameter for testing.
+
+
+DELIVERABLES:
+
+The working course at a Replit-hosted URL.
+A qm_crosswalk.md file in the repo listing every QM standard (1.1 through 8.7) and the URL/page that satisfies it.
+A README.md explaining how to deploy, how to configure institutional placeholders, and how to enable admin override.
+
+Build it. Use the course doc as the source of all curriculum content. Use the QM rubric as the spec for the shell. Do not modify the curriculum content from the course doc.
