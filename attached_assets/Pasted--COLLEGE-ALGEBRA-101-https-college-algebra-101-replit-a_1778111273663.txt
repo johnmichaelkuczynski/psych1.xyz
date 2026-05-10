@@ -1,0 +1,33 @@
+🧮 COLLEGE ALGEBRA 101
+https://college-algebra-101.replit.app
+
+Self-Paced, AI-Graded College Algebra Course with Real Math Input and Instant Feedback
+
+🧩 Overview
+COLLEGE ALGEBRA 101 is a fully self-running College Algebra course that grades student work with a frontier AI model in seconds. Students read the lesson, write a real response (prose and equations), submit, and receive a numeric score plus written feedback referenced against a hidden model answer and rubric.
+
+Unlike practice apps that only check multiple-choice answers or pattern-match on a final number, COLLEGE ALGEBRA 101 grades the reasoning. The AI grader reads the entire student response — every step, every justification, every formatted equation — and evaluates it against the assignment requirements the same way a human instructor would. Discussions, essays, term-paper outlines, and the term paper itself are all graded the same way, end-to-end, with no human in the loop.
+
+👥 Who It's For
+High school and college students -- need to learn or relearn College Algebra at their own pace, with real graded feedback instead of "good job" stickers
+Adult learners returning to math -- need a structured 14-assignment course they can do on their own schedule without enrolling anywhere
+Homeschool families -- need a complete algebra curriculum that grades writing-intensive math work automatically
+Tutors and supplemental instructors -- need a ready-made pool of discussion prompts, essay assignments, and worked model solutions
+Anyone -- who has ever submitted math homework and waited two weeks to find out they got it wrong
+⚙️ Core Capabilities
+AI-Graded Free-Response Math -- Every submission is graded by Claude Sonnet 4.5 against the assignment's full rubric and a hidden model answer. Returns a numeric score (clamped to the assignment's point value) plus written, rubric-referenced feedback in seconds.
+Real Math Input with MathLive -- A built-in equation editor lets students type real algebra (fractions, exponents, radicals, parentheses, the works) the way they'd write it on paper. Equations are stored as LaTeX and submitted alongside the prose explanation.
+KaTeX-Rendered Lessons and Feedback -- Background readings, assignment prompts, model answers, and AI feedback all render proper mathematical typesetting. Students see the same notation their textbook uses, not ASCII approximations.
+Hidden Model Answers, Revealable On Demand -- Each assignment ships with a worked model solution and the rationale behind it. Students can stay locked in on their own attempt or click to reveal the model after submitting.
+Best-Score Progress Tracking -- Students can resubmit any assignment as many times as they want; the best score per item rolls up into the overall course total (800 points across 14 items).
+Complete 14-Item Curriculum, Built In -- Seven discussions, five essays, a term paper outline, and a term paper. Every item includes a background reading, an assignment prompt, a model response, and grading rationale.
+Single-Sign-On Course Shell -- One sign-in unlocks the whole course. Progress, submissions, and feedback persist across sessions on any device.
+Instructor-Free Operation -- The course runs without a human grader. No queue, no office hours, no waiting — submit at 2 a.m. and get feedback by 2:01 a.m.
+Verbatim Curriculum Source -- All course content is parsed verbatim from the source curriculum document. No paraphrasing, no AI-generated lesson content — just the real syllabus, rendered properly.
+🚀 What Makes It Different
+It actually grades the math -- Not just the final answer. The AI reads every step of work and evaluates the reasoning against the rubric.
+It accepts real equations -- Students type math like math, not like code. No x^2 or sqrt(x) workarounds.
+It returns rubric-referenced feedback -- Feedback names the specific assignment requirements that were met, partially met, or missed — the same way a human grader would write it.
+It's instant -- Submit, and the score and written feedback land in seconds. No grading backlog, ever.
+It's resubmittable -- Best score wins. Students are encouraged to revise and resubmit until they actually understand the material, not until the deadline passes.
+It's the full course, not a demo -- All 14 graded items totalling 800 points are live and gradable from day one. Nothing is locked, coming-soon, or paywalled behind a tier.

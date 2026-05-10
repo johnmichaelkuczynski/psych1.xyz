@@ -13,6 +13,7 @@ import Tutor from "@/pages/tutor";
 import Assessments from "@/pages/assessments";
 import Support from "@/pages/support";
 import Accessibility from "@/pages/accessibility";
+import Diagnostic from "@/pages/diagnostic";
 import AdminSubmissions from "@/pages/admin-submissions";
 import AdminSubmissionDetail from "@/pages/admin-submission-detail";
 import NotFound from "@/pages/not-found";
@@ -57,6 +58,7 @@ function Routes() {
       </Route>
       <Route path="/support" component={Support} />
       <Route path="/accessibility" component={Accessibility} />
+      <Route path="/diagnostic" component={Diagnostic} />
       <Route path="/admin/submissions">
         <RequireAuth>
           <AdminSubmissions />

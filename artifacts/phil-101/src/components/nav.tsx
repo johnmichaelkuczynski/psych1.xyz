@@ -17,6 +17,7 @@ const links = [
   { href: "/assessments", label: "Assessments" },
   { href: "/support", label: "Support" },
   { href: "/accessibility", label: "Accessibility" },
+  { href: "/diagnostic", label: "Diagnostic" },
 ];
 
 export function Nav() {

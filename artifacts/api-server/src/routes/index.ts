@@ -9,10 +9,12 @@ import draftsRouter from "./drafts";
 import canvasRouter from "./canvas";
 import integrityRouter from "./integrity";
 import adminRouter from "./admin";
+import diagnosticRouter from "./diagnostic";
 
 const router: IRouter = Router();
 
 router.use(healthRouter);
+router.use(diagnosticRouter);
 router.use(authRouter);
 router.use(progressRouter);
 router.use(submissionsRouter);
