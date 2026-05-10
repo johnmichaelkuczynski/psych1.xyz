@@ -2,7 +2,7 @@ import { useState } from "react";
 import { PageShell } from "@/components/page-shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, Loader2, PlayCircle } from "lucide-react";
+import { CheckCircle2, XCircle, Loader2, PlayCircle, AlertTriangle } from "lucide-react";
 
 type Check = {
   name: string;
@@ -10,6 +10,7 @@ type Check = {
   ms: number;
   detail?: string;
   error?: string;
+  optional?: boolean;
 };
 
 type Report = {
@@ -205,35 +206,42 @@ export default function Diagnostic() {
               )}
               {s.report && (
                 <ul className="divide-y divide-stone-200" data-testid={`list-${key}-checks`}>
-                  {s.report.checks.map((c, i) => (
-                    <li key={i} className="flex items-start gap-3 py-2">
-                      {c.ok ? (
-                        <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
-                      ) : (
-                        <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
-                      )}
-                      <div className="flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="text-sm font-medium text-stone-900">
-                            {c.name}
-                          </span>
-                          <span className="text-xs text-stone-500">
-                            {c.ms}ms
-                          </span>
+                  {s.report.checks.map((c, i) => {
+                    const isWarn = !c.ok && c.optional;
+                    return (
+                      <li key={i} className="flex items-start gap-3 py-2">
+                        {c.ok ? (
+                          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600" />
+                        ) : isWarn ? (
+                          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-500" />
+                        ) : (
+                          <XCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-600" />
+                        )}
+                        <div className="flex-1">
+                          <div className="flex items-baseline justify-between gap-2">
+                            <span className="text-sm font-medium text-stone-900">
+                              {c.name}
+                            </span>
+                            <span className="text-xs text-stone-500">
+                              {c.ms}ms
+                            </span>
+                          </div>
+                          {c.detail && (
+                            <div className="text-xs text-stone-600">
+                              {c.detail}
+                            </div>
+                          )}
+                          {c.error && (
+                            <div
+                              className={`text-xs ${isWarn ? "text-amber-700" : "text-red-700"}`}
+                            >
+                              {isWarn ? "info" : "error"}: {c.error}
+                            </div>
+                          )}
                         </div>
-                        {c.detail && (
-                          <div className="text-xs text-stone-600">
-                            {c.detail}
-                          </div>
-                        )}
-                        {c.error && (
-                          <div className="text-xs text-red-700">
-                            error: {c.error}
-                          </div>
-                        )}
-                      </div>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </CardContent>

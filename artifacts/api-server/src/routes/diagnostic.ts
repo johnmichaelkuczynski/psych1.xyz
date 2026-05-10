@@ -11,9 +11,15 @@ type Check = {
   ms: number;
   detail?: string;
   error?: string;
+  /** When true, a failure of this check is informational only and should not fail the overall report. */
+  optional?: boolean;
 };
 
-async function run(name: string, fn: () => Promise<string | void>): Promise<Check> {
+async function run(
+  name: string,
+  fn: () => Promise<string | void>,
+  opts: { optional?: boolean } = {},
+): Promise<Check> {
   const start = Date.now();
   try {
     const detail = await fn();
@@ -22,6 +28,7 @@ async function run(name: string, fn: () => Promise<string | void>): Promise<Chec
       ok: true,
       ms: Date.now() - start,
       detail: typeof detail === "string" ? detail : undefined,
+      optional: opts.optional,
     };
   } catch (e) {
     return {
@@ -29,6 +36,7 @@ async function run(name: string, fn: () => Promise<string | void>): Promise<Chec
       ok: false,
       ms: Date.now() - start,
       error: e instanceof Error ? e.message : String(e),
+      optional: opts.optional,
     };
   }
 }
@@ -68,11 +76,15 @@ router.get("/diagnostic/system", async (_req: Request, res: Response) => {
     }),
   );
   checks.push(
-    await run("Environment: GPTZERO_API_KEY (optional)", async () => {
-      if (!process.env.GPTZERO_API_KEY)
-        throw new Error("not set — AI-writing detector disabled");
-      return "set";
-    }),
+    await run(
+      "Environment: GPTZERO_API_KEY (optional)",
+      async () => {
+        if (!process.env.GPTZERO_API_KEY)
+          throw new Error("not set — AI-writing detector disabled");
+        return "set";
+      },
+      { optional: true },
+    ),
   );
 
   checks.push(
@@ -144,7 +156,7 @@ router.get("/diagnostic/system", async (_req: Request, res: Response) => {
     }),
   );
 
-  const ok = checks.every((c) => c.ok || c.name.includes("optional"));
+  const ok = checks.every((c) => c.ok || c.optional);
   res.json({ ok, checks, generatedAt: new Date().toISOString() });
 });
 
