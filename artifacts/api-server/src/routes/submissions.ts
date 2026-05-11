@@ -10,6 +10,13 @@ import { moduleById, modules } from "../lib/curriculum";
 import { checkWithGPTZero } from "../lib/gptzero";
 import { computeActivityReport } from "../lib/activityReport";
 import { logger } from "../lib/logger";
+import {
+  analyzeProcessWithBaseline,
+  foldIntoBaseline,
+  type ProcessBaseline,
+  type ProcessEvent,
+} from "../lib/processForensics";
+import { studentsTable } from "@workspace/db";
 
 const router: IRouter = Router();
 router.use(attachSession);
@@ -90,6 +97,62 @@ router.post(
         ? computeActivityReport(keystrokes, scoreHistory)
         : null;
 
+    // ---- Process forensics (second AI-detection layer) ----
+    // Guard: skip entirely on sparse data, otherwise short/empty streams
+    // get scored as likelyAI ("no human signals present" reads the same
+    // as "robotic"). Persist nulls in that case.
+    let processScore: number | null = null;
+    let processClass: string | null = null;
+    let processFeaturesPayload: Record<string, unknown> | null = null;
+    let processFlagsArr: string[] | null = null;
+    let nextBaseline: ProcessBaseline | null = null;
+    let baselineSnapshotN = 0;
+
+    const events = (keystrokes ?? []) as ProcessEvent[];
+    const eligibleForForensics =
+      events.length >= 20 && content.length >= 80;
+    if (eligibleForForensics) {
+      const studentRows = await db
+        .select({ processBaseline: studentsTable.processBaseline })
+        .from(studentsTable)
+        .where(eq(studentsTable.id, studentId))
+        .limit(1);
+      const baseline =
+        (studentRows[0]?.processBaseline as ProcessBaseline | null) ?? null;
+      baselineSnapshotN = baseline?.n ?? 0;
+
+      try {
+        const analysis = analyzeProcessWithBaseline(events, content, baseline);
+        processScore = analysis.processScore;
+        processClass = analysis.processClass;
+        processFlagsArr = analysis.flags;
+        // Stash baseline-adjusted info in processFeatures using __ prefixed
+        // keys so the admin renderer can ignore them in the feature loop.
+        // This avoids a second migration while still persisting "value vs
+        // this student's baseline at the time".
+        processFeaturesPayload = {
+          ...analysis.features,
+          __baselineAdjustedScore: analysis.baselineAdjustedScore,
+          __baselineDeviation: analysis.baselineDeviation,
+          __baselineSnapshot: baseline?.features ?? null,
+          __baselineN: baselineSnapshotN,
+        };
+
+        // Fold into baseline ONLY if baseline.n < 2. After 2 submissions the
+        // baseline is frozen — deliberate, to prevent slow-drift attacks
+        // where a student gradually trains the baseline toward their
+        // cheating profile.
+        if (baselineSnapshotN < 2) {
+          nextBaseline = foldIntoBaseline(baseline, analysis.features);
+        }
+      } catch (err) {
+        logger.warn(
+          { err, studentId, moduleId },
+          "Process forensics analysis failed",
+        );
+      }
+    }
+
     const inserted = await db
       .insert(submissionsTable)
       .values({
@@ -104,8 +167,22 @@ router.post(
         scoreHistory: scoreHistory ?? undefined,
         activityReport: activityReport ?? undefined,
         flaggedOnSubmit,
+        processScore,
+        processClass,
+        processFeatures: processFeaturesPayload ?? undefined,
+        processFlags: processFlagsArr ?? undefined,
       })
       .returning();
+
+    if (nextBaseline) {
+      await db
+        .update(studentsTable)
+        .set({ processBaseline: nextBaseline })
+        .where(eq(studentsTable.id, studentId))
+        .catch((err) => {
+          logger.warn({ err, studentId }, "Baseline update failed");
+        });
+    }
 
     const row = inserted[0];
     res.status(201).json(SubmissionZ.parse(row));

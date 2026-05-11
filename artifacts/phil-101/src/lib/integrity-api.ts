@@ -72,6 +72,17 @@ export const integrityApi = {
       method: "POST",
       body: JSON.stringify({ text }),
     }),
+  processScore: (
+    moduleId: string,
+    payload: { events: unknown[]; content: string },
+  ) =>
+    req<{ score: number | null; class: string | null }>(
+      `/canvas/${moduleId}/processScore`,
+      {
+        method: "POST",
+        body: JSON.stringify(payload),
+      },
+    ),
 
   // Integrity ack
   ack: () => req<void>(`/integrity/ack`, { method: "POST" }),
@@ -112,6 +123,10 @@ export const integrityApi = {
         activityReport: Record<string, unknown> | null;
         flaggedOnSubmit: boolean;
         reviewStatus: string;
+        processScore: number | null;
+        processClass: "human" | "mixed" | "likelyAI" | null;
+        processFeatures: Record<string, unknown> | null;
+        processFlags: string[] | null;
       };
     }>(`/admin/submissions/${id}`),
   review: (id: number, status: "pending" | "reviewed" | "flagged") =>

@@ -129,6 +129,22 @@ export default function AdminSubmissionDetail() {
       <Card>
         <CardHeader>
           <CardTitle className="font-serif text-lg">
+            Writing-process forensics
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ProcessForensicsView
+            score={sub.processScore}
+            cls={sub.processClass}
+            features={sub.processFeatures}
+            flags={sub.processFlags}
+          />
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="font-serif text-lg">
             Activity report
           </CardTitle>
         </CardHeader>
@@ -168,6 +184,121 @@ export default function AdminSubmissionDetail() {
       </Card>
     </PageShell>
   );
+}
+
+/**
+ * Admin-only writing-process panel. Surfaces the per-feature suspicion
+ * values, baseline comparison (n + per-feature deviation), and the
+ * human-readable flags the analyzer raised. Hidden from students.
+ */
+function ProcessForensicsView({
+  score,
+  cls,
+  features,
+  flags,
+}: {
+  score: number | null;
+  cls: "human" | "mixed" | "likelyAI" | null;
+  features: Record<string, unknown> | null;
+  flags: string[] | null;
+}) {
+  if (score == null || !features) {
+    return (
+      <p className="text-sm text-stone-500">
+        Not analyzed (sparse keystrokes or not enough text).
+      </p>
+    );
+  }
+  const baselineN =
+    typeof features.__baselineN === "number" ? features.__baselineN : 0;
+  const baselineAdj =
+    typeof features.__baselineAdjustedScore === "number"
+      ? features.__baselineAdjustedScore
+      : null;
+  const deviation =
+    (features.__baselineDeviation as Record<string, number> | null) ?? null;
+  const snapshot =
+    (features.__baselineSnapshot as Record<string, number> | null) ?? null;
+  const featureRows = Object.entries(features).filter(
+    ([k]) => !k.startsWith("__"),
+  ) as [string, number][];
+  const badge =
+    cls === "likelyAI"
+      ? "destructive"
+      : cls === "mixed"
+        ? "default"
+        : "outline";
+  return (
+    <div className="space-y-3" data-testid="process-forensics">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge variant={badge as "destructive" | "default" | "outline"}>
+          process: {cls ?? "—"}
+        </Badge>
+        <Badge variant="outline">score: {score}/100</Badge>
+        {baselineAdj != null && (
+          <Badge variant="outline">
+            adjusted vs baseline: {baselineAdj}/100
+          </Badge>
+        )}
+        <Badge variant="outline">baseline n={baselineN}/2</Badge>
+      </div>
+      {flags && flags.length > 0 && (
+        <ul className="list-disc space-y-0.5 pl-5 text-sm text-stone-700">
+          {flags.map((f, i) => (
+            <li key={i}>{f}</li>
+          ))}
+        </ul>
+      )}
+      <table className="w-full text-sm">
+        <thead className="text-left text-xs uppercase tracking-wide text-stone-500">
+          <tr>
+            <th className="py-1 pr-3">Feature</th>
+            <th className="py-1 pr-3">Value</th>
+            {snapshot && <th className="py-1 pr-3">Baseline</th>}
+            {deviation && <th className="py-1 pr-3">Δ</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {featureRows.map(([k, v]) => (
+            <tr key={k} className="border-t border-stone-100">
+              <td className="py-1 pr-3 text-stone-600">{k}</td>
+              <td className="py-1 pr-3 font-mono text-stone-900">
+                {fmtFeature(k, v)}
+              </td>
+              {snapshot && (
+                <td className="py-1 pr-3 font-mono text-stone-500">
+                  {snapshot[k] != null ? fmtFeature(k, snapshot[k]) : "—"}
+                </td>
+              )}
+              {deviation && (
+                <td className="py-1 pr-3 font-mono text-stone-500">
+                  {deviation[k] != null
+                    ? `${(deviation[k]! * 100).toFixed(0)}%`
+                    : "—"}
+                </td>
+              )}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+function fmtFeature(key: string, v: number): string {
+  if (!Number.isFinite(v)) return "—";
+  if (key === "deletionRatio" || key === "frontToBackLinearity")
+    return `${(v * 100).toFixed(1)}%`;
+  if (key === "burstLengthCV") return v.toFixed(2);
+  if (
+    key === "burstUniformity" ||
+    key === "pauseBeforeNewSentence" ||
+    key === "pauseBeforeNewParagraph"
+  )
+    return `${Math.round(v)} ms`;
+  if (key === "totalActiveSeconds") return `${Math.round(v)} s`;
+  if (key === "charsPerSecond") return v.toFixed(2);
+  return String(v);
 }
 
 function ActivityReportView({

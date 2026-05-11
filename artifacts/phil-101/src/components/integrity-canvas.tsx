@@ -15,11 +15,26 @@ import { Eye, EyeOff, Loader2, ShieldCheck, Type, X } from "lucide-react";
 import { toast } from "sonner";
 import { integrityApi } from "@/lib/integrity-api";
 
+/**
+ * Per-event log shape. We log BOTH the legacy {k,d} keys (so older
+ * activity-report code keeps working without changes) AND the new rich
+ * keys (type/len/caretBefore/caretAfter/text/charCount) that the writing-
+ * process forensics analyzer reads. Server-side analyzer normalizes both.
+ */
 interface KeystrokeEvent {
   t: number;
+  // Legacy
   k: "i" | "d" | "m" | "p_blocked" | "p_allowed" | "h_off" | "h_on";
   d?: string;
   p?: number;
+  // Rich (new)
+  type?: "insert" | "delete" | "caretJump" | "focus" | "blur";
+  pos?: number;
+  len?: number;
+  charCount?: number;
+  caretBefore?: number | null;
+  caretAfter?: number | null;
+  text?: string;
 }
 
 interface ScoreSample {
@@ -91,6 +106,15 @@ export function IntegrityCanvas({
   const textRef = useRef<string>("");
   const composingRef = useRef<boolean>(false);
   const scoreReqIdRef = useRef<number>(0);
+  // Tracked caret position so each input event can record where the edit
+  // landed. Updated on selection/keydown/click/focus.
+  const lastCaretRef = useRef<number>(0);
+  // Last time we hit /processScore (epoch ms). Throttled to once per 60s.
+  const lastProcessScoreAtRef = useRef<number>(0);
+  const [processScore, setProcessScore] = useState<number | null>(null);
+  const [processClass, setProcessClass] = useState<
+    "human" | "mixed" | "likelyAI" | null
+  >(null);
   const [text, setText] = useState<string>("");
   const [sentences, setSentences] = useState<SentenceResult[]>([]);
   const [aiScore, setAiScore] = useState<number | null>(null);
@@ -201,6 +225,34 @@ export function IntegrityCanvas({
     [moduleId, accommodated],
   );
 
+  // ---- Live process-forensics score (throttled 1/60s) -----------------
+  // Returns ONLY {score, class}. We deliberately don't surface the
+  // individual feature names to the student — that would give a tuning
+  // oracle to anyone testing the limits of the detector.
+  const scheduleProcessScore = useCallback(
+    (latest: string) => {
+      if (accommodated) return;
+      const now = Date.now();
+      if (now - lastProcessScoreAtRef.current < 60_000) return;
+      if (keystrokesRef.current.length < 20 || latest.length < 80) return;
+      lastProcessScoreAtRef.current = now;
+      integrityApi
+        .processScore(moduleId, {
+          events: keystrokesRef.current,
+          content: latest,
+        })
+        .then((r) => {
+          if (typeof r.score === "number") setProcessScore(r.score);
+          else setProcessScore(null);
+          setProcessClass(
+            (r.class as "human" | "mixed" | "likelyAI" | null) ?? null,
+          );
+        })
+        .catch(() => {});
+    },
+    [accommodated, moduleId],
+  );
+
   const scheduleScore = useCallback(
     (latest: string) => {
       if (accommodated) return;
@@ -224,29 +276,83 @@ export function IntegrityCanvas({
     });
   }
 
+  /** Get caret end-position as a flat character offset, or null if unknown. */
+  function caretOffset(el: HTMLElement): number | null {
+    try {
+      const sel = window.getSelection();
+      if (!sel || sel.rangeCount === 0) return null;
+      const r = sel.getRangeAt(0).cloneRange();
+      r.selectNodeContents(el);
+      r.setEnd(
+        sel.getRangeAt(0).endContainer,
+        sel.getRangeAt(0).endOffset,
+      );
+      return r.toString().length;
+    } catch {
+      return null;
+    }
+  }
+
   function handleInput() {
     if (composingRef.current) return; // wait for compositionend
     const el = editorRef.current;
     if (!el) return;
     const newText = el.innerText.replace(/\u00A0/g, " ");
     const prev = textRef.current;
+    const caretAfter = caretOffset(el);
     if (newText.length > prev.length) {
+      const delta = newText.length - prev.length;
       // Detect simple end-append vs middle insertion (selection replace etc).
       const appended = newText.slice(prev.length);
-      if (newText.startsWith(prev)) {
-        logKey({ k: "i", d: appended });
-      } else {
-        logKey({ k: "m", d: `+${newText.length - prev.length}` });
-      }
+      const isAppend = newText.startsWith(prev);
+      // For middle insertions we don't know the exact insert text without
+      // a diff; the analyzer only needs the count anyway.
+      const insertedText = isAppend ? appended : "";
+      const caretBefore =
+        caretAfter != null ? Math.max(0, caretAfter - delta) : lastCaretRef.current;
+      logKey({
+        k: isAppend ? "i" : "m",
+        d: isAppend ? appended : `+${delta}`,
+        type: "insert",
+        pos: caretBefore,
+        len: delta,
+        charCount: delta,
+        caretBefore,
+        caretAfter,
+        text: insertedText,
+      });
     } else if (newText.length < prev.length) {
       const removed = prev.length - newText.length;
-      logKey({ k: "d", d: String(removed) });
+      const caretBefore =
+        caretAfter != null ? caretAfter + removed : lastCaretRef.current;
+      logKey({
+        k: "d",
+        d: String(removed),
+        type: "delete",
+        pos: caretBefore,
+        len: removed,
+        caretBefore,
+        caretAfter,
+      });
     } else if (newText !== prev) {
-      logKey({ k: "m" });
+      logKey({ k: "m", type: "insert", caretBefore: caretAfter, caretAfter });
     }
+    if (caretAfter != null) lastCaretRef.current = caretAfter;
     textRef.current = newText;
     setText(newText);
     scheduleScore(newText);
+    scheduleProcessScore(newText);
+  }
+
+  function handleSelectionChange() {
+    const el = editorRef.current;
+    if (!el) return;
+    const c = caretOffset(el);
+    if (c == null) return;
+    if (Math.abs(c - lastCaretRef.current) > 5) {
+      logKey({ k: "m", type: "caretJump", pos: c, caretBefore: lastCaretRef.current, caretAfter: c });
+    }
+    lastCaretRef.current = c;
   }
 
   function handleCompositionStart() {
@@ -340,13 +446,74 @@ export function IntegrityCanvas({
             value={text}
             onChange={(e) => {
               const v = e.target.value;
+              const prev = text;
+              const target = e.target as HTMLTextAreaElement;
+              const caretAfter =
+                typeof target.selectionEnd === "number"
+                  ? target.selectionEnd
+                  : v.length;
+              if (v.length > prev.length) {
+                const delta = v.length - prev.length;
+                const caretBefore = Math.max(0, caretAfter - delta);
+                // Always emit rich event metadata even when live UI
+                // monitoring is disabled — admin/server-side analysis
+                // still benefits from the same shape signals.
+                logKey({
+                  k: "i",
+                  d: v.slice(caretBefore, caretBefore + delta),
+                  type: "insert",
+                  pos: caretBefore,
+                  len: delta,
+                  charCount: delta,
+                  caretBefore,
+                  caretAfter,
+                  text: v.slice(caretBefore, caretBefore + delta),
+                });
+              } else if (v.length < prev.length) {
+                const removed = prev.length - v.length;
+                logKey({
+                  k: "d",
+                  d: String(removed),
+                  type: "delete",
+                  pos: caretAfter,
+                  len: removed,
+                  caretBefore: caretAfter + removed,
+                  caretAfter,
+                });
+              }
               setText(v);
-              logKey(
-                v.length > text.length
-                  ? { k: "i", d: v.slice(text.length) }
-                  : { k: "d" },
-              );
             }}
+            onSelect={(e) => {
+              const target = e.target as HTMLTextAreaElement;
+              const c = target.selectionEnd;
+              if (typeof c !== "number") return;
+              if (Math.abs(c - lastCaretRef.current) > 5) {
+                logKey({
+                  k: "m",
+                  type: "caretJump",
+                  pos: c,
+                  caretBefore: lastCaretRef.current,
+                  caretAfter: c,
+                });
+              }
+              lastCaretRef.current = c;
+            }}
+            onFocus={() =>
+              logKey({
+                k: "m",
+                type: "focus",
+                caretBefore: lastCaretRef.current,
+                caretAfter: lastCaretRef.current,
+              })
+            }
+            onBlur={() =>
+              logKey({
+                k: "m",
+                type: "blur",
+                caretBefore: lastCaretRef.current,
+                caretAfter: lastCaretRef.current,
+              })
+            }
             placeholder="Type your final answer here…"
             data-testid="input-canvas-accommodated"
           />
@@ -428,7 +595,9 @@ export function IntegrityCanvas({
             />
           </div>
           <div className="flex items-center justify-between text-xs text-stone-600">
-            <span data-testid="bucket-label">{BUCKET_LABEL[bucket]}</span>
+            <span data-testid="bucket-label">
+              Text analysis: {BUCKET_LABEL[bucket]}
+            </span>
             <span className="flex items-center gap-2">
               {scoring && (
                 <Loader2 className="h-3 w-3 animate-spin text-stone-400" />
@@ -466,6 +635,12 @@ export function IntegrityCanvas({
           </div>
         </div>
 
+        {/* Process-forensics traffic light (writing-style sanity check) */}
+        <ProcessBar
+          score={processScore}
+          cls={processClass}
+        />
+
         {/* Editor stack: highlight overlay behind transparent contentEditable */}
         <div className="relative">
           <div
@@ -489,6 +664,24 @@ export function IntegrityCanvas({
             onCut={handleCopyOrCut}
             onDrop={handleDrop}
             onDragOver={(e) => e.preventDefault()}
+            onSelect={handleSelectionChange}
+            onClick={handleSelectionChange}
+            onKeyUp={handleSelectionChange}
+            onFocus={() => {
+              const el = editorRef.current;
+              if (!el) return;
+              const c = caretOffset(el);
+              if (c != null) lastCaretRef.current = c;
+              logKey({ k: "m", type: "focus", caretBefore: c, caretAfter: c });
+            }}
+            onBlur={() => {
+              logKey({
+                k: "m",
+                type: "blur",
+                caretBefore: lastCaretRef.current,
+                caretAfter: lastCaretRef.current,
+              });
+            }}
             className={`relative min-h-[300px] w-full whitespace-pre-wrap break-words rounded-md border border-stone-300 bg-white p-3 font-sans text-[15px] leading-relaxed caret-stone-900 focus:outline-none focus:ring-2 focus:ring-stone-400 ${
               highlightingOn ? "text-transparent" : "text-stone-900"
             }`}
@@ -568,6 +761,57 @@ export function IntegrityCanvas({
         </AlertDialogContent>
       </AlertDialog>
     </Card>
+  );
+}
+
+/**
+ * Second traffic-light bar — writing-process score (writing-style sanity
+ * check). Deliberately labeled generically so we don't tip off cheaters
+ * to the specific signals the analyzer reads.
+ */
+function ProcessBar({
+  score,
+  cls,
+}: {
+  score: number | null;
+  cls: "human" | "mixed" | "likelyAI" | null;
+}) {
+  const color =
+    cls === "likelyAI"
+      ? "bg-red-500"
+      : cls === "mixed"
+        ? "bg-amber-400"
+        : cls === "human"
+          ? "bg-emerald-500"
+          : "bg-stone-300";
+  const label =
+    cls === "likelyAI"
+      ? "Red — atypical writing pattern"
+      : cls === "mixed"
+        ? "Yellow — borderline writing pattern"
+        : cls === "human"
+          ? "Green — natural writing pattern"
+          : "Writing-style check will activate after a few minutes of writing";
+  return (
+    <div className="space-y-1.5" data-testid="process-bar">
+      <div
+        className="relative h-3 w-full overflow-hidden rounded-full bg-stone-200"
+        data-bucket={cls ?? "neutral"}
+        aria-label={`Writing-style check: ${label}`}
+      >
+        <div
+          className={`absolute inset-y-0 left-0 transition-all ${color}`}
+          style={{
+            width:
+              score == null ? "12%" : `${Math.max(8, Math.round(score))}%`,
+          }}
+        />
+      </div>
+      <div className="flex items-center justify-between text-xs text-stone-600">
+        <span>Writing-style check: {label}</span>
+        {score != null && <span data-testid="process-score">{score}/100</span>}
+      </div>
+    </div>
   );
 }
 

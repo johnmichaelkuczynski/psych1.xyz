@@ -2,6 +2,10 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq } from "drizzle-orm";
 import { db, studentsTable, submissionsTable } from "@workspace/db";
 import { modules } from "../lib/curriculum";
+import {
+  analyzeProcess,
+  type ProcessEvent,
+} from "../lib/processForensics";
 
 const router: IRouter = Router();
 
@@ -141,6 +145,167 @@ router.get("/diagnostic/system", async (_req: Request, res: Response) => {
       if (j.status !== "ok") throw new Error("status != ok");
       return "200 ok";
     }),
+  );
+
+  // ---- Process forensics: 2 synthetic end-to-end tests --------------------
+  checks.push(
+    await run(
+      "Process forensics: synthetic transcription scores as likelyAI",
+      async () => {
+        // 50 bursts of 4 chars at exactly 180 ms apart — robotic uniformity,
+        // no deletes, no caret backtracks, no abandoned starts.
+        const events: ProcessEvent[] = [];
+        let t = 0;
+        let pos = 0;
+        for (let i = 0; i < 50; i++) {
+          events.push({
+            t,
+            type: "insert",
+            pos,
+            len: 4,
+            charCount: 4,
+            caretBefore: pos,
+            caretAfter: pos + 4,
+            text: "abcd",
+            k: "i",
+            d: "abcd",
+          });
+          pos += 4;
+          t += 180;
+        }
+        const finalText = "abcd".repeat(50);
+        const r = analyzeProcess(events, finalText);
+        if (r.processClass !== "likelyAI")
+          throw new Error(
+            `expected likelyAI, got ${r.processClass} score=${r.processScore}`,
+          );
+        if (r.processScore < 65)
+          throw new Error(
+            `expected score≥65, got ${r.processScore}`,
+          );
+        return `score=${r.processScore} class=${r.processClass}`;
+      },
+    ),
+  );
+
+  checks.push(
+    await run(
+      "Process forensics: synthetic composition scores as human",
+      async () => {
+        // Realistic composition. Each "burst" is a single multi-char insert
+        // (matches how a real human-typed editor logs a sustained run of
+        // typing as one event), with VARIED inter-burst gaps. Plus:
+        //   • 1 abandoned start (60-char tangent → 95% deleted → restart
+        //     within 10 chars of the abandon-start caret)
+        //   • 4 long caret backtracks (>100 chars), each followed by an
+        //     insert at a far-back position (drives front-to-back
+        //     linearity well below 0.7)
+        //   • 2 structural deletes (≥30 chars OR pos < docLen/2)
+        const events: ProcessEvent[] = [];
+        let t = 1000;
+        let docLen = 0;
+        function ins(s: string, gap: number, posOverride?: number) {
+          t += gap;
+          const pos = posOverride ?? docLen;
+          events.push({
+            t,
+            type: "insert",
+            pos,
+            len: s.length,
+            charCount: s.length,
+            caretBefore: pos,
+            caretAfter: pos + s.length,
+            text: s,
+            k: "i",
+            d: s,
+          });
+          if (posOverride == null) docLen += s.length;
+          else docLen += s.length; // logical, even for inserts in the middle
+        }
+        function del(len: number, posOverride?: number) {
+          const pos = posOverride ?? docLen;
+          events.push({
+            t,
+            type: "delete",
+            pos,
+            len,
+            caretBefore: pos,
+            caretAfter: pos - len,
+            k: "d",
+            d: String(len),
+          });
+          docLen -= len;
+        }
+        function jump(to: number, gap: number) {
+          t += gap;
+          events.push({
+            t,
+            type: "caretJump",
+            pos: to,
+            caretBefore: docLen,
+            caretAfter: to,
+            k: "m",
+          });
+        }
+        // 8 logical sentences with varied inter-burst pauses.
+        ins("Plato's Phaedo opens with Socrates calmly facing his execution.", 0);
+        ins(" His friends find this composure baffling — surely death is to be feared.", 2300);
+        ins(" Socrates replies that the philosopher has practiced dying all along.", 4100);
+        ins(" Philosophy, on his telling, is the soul's gradual release from the body.", 1800);
+        // Abandoned start: 60-char tangent → delete most of it → restart near same caret
+        const abandonStart = docLen;
+        ins(
+          " I will now consider an entirely different reading of this dialogue.",
+          3200,
+        );
+        const abandonLen = docLen - abandonStart;
+        t += 2400; // pause and re-read
+        del(Math.floor(abandonLen * 0.95)); // ≥80% deleted within 60s
+        // Restart within 10 chars of the abandon-start caret
+        t += 900;
+        ins(" On reflection, that line of thought belongs in a later section.", 0, abandonStart + 2);
+        // More body
+        ins(" The cyclical argument — that opposites generate opposites — comes first.", 2700);
+        ins(" Critics rightly note that this proves recurrence, not personal survival.", 4500);
+        // 4 long caret backtracks to far-back positions, each with an insert
+        for (const target of [40, 90, 160, 220]) {
+          jump(target, 2200);
+          ins(", however,", 600, target);
+        }
+        // 2 structural deletes
+        // (a) far-back: middle of the doc
+        t += 2100;
+        del(28, Math.floor(docLen / 3));
+        // (b) large delete from the end
+        t += 3000;
+        del(35);
+        ins(" Whatever the verdict, the dialogue rewards close attention.", 1800);
+
+        // Final text deliberately won't match the per-char reconstruction
+        // (caret-position semantics differ for middle inserts), so the
+        // pauseBeforeNewSentence/Paragraph features skip and the verdict
+        // rests on the edit-shape signals — exactly what we want to test.
+        const finalText =
+          "Plato's Phaedo opens with Socrates calmly facing his execution. " +
+          "His friends find this composure baffling. " +
+          "Socrates replies that the philosopher has practiced dying all along. " +
+          "Philosophy is the soul's gradual release from the body. " +
+          "On reflection, that line of thought belongs elsewhere. " +
+          "The cyclical argument comes first. " +
+          "Critics rightly note that this proves recurrence, not personal survival. " +
+          "Whatever the verdict, the dialogue rewards close attention.";
+        const r = analyzeProcess(events, finalText);
+        if (r.processClass !== "human")
+          throw new Error(
+            `expected human, got ${r.processClass} score=${r.processScore} flags=${JSON.stringify(r.flags)}`,
+          );
+        if (r.processScore >= 35)
+          throw new Error(
+            `expected score<35, got ${r.processScore} flags=${JSON.stringify(r.flags)}`,
+          );
+        return `score=${r.processScore} class=${r.processClass}`;
+      },
+    ),
   );
 
   checks.push(

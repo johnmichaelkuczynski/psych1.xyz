@@ -1,0 +1,149 @@
+Add diachronic AI-detection (writing-process forensics) to this course
+Why
+Text-only AI detectors (GPTZero etc.) catch raw AI output but miss students who paste AI text into another tab, paraphrase it sentence-by-sentence, and transcribe the paraphrase into the assignment. Transcription leaves a distinctive process fingerprint: uniform burst timing, near-zero deletions, no caret backtracking, no abandoned-and-restarted starts. We want to score that fingerprint and flag it independently of the final text.
+
+You will add a second AI-detection layer that analyzes the shape of the writing session and combines it with a per-student baseline so each student is judged against their own normal writing behavior, not a population average.
+
+Scope (do all 8 steps; don't skip any)
+1. Rich keystroke capture (frontend, in the writing surface)
+The writing surface (contentEditable, textarea, or whatever this course uses) must emit events of this shape on every change:
+
+type ProcessEvent = {
+  t: number;                 // ms epoch
+  type: "insert" | "delete" | "caretJump" | "focus" | "blur";
+  pos?: number;              // caret position at the time of the event
+  len: number;               // chars affected (0 for caret/focus/blur)
+  charCount?: number;        // for inserts: actual char count
+  caretBefore?: number;
+  caretAfter?: number;
+  text?: string;             // optional, for inserts (kept short)
+  k?: string;                // LEGACY field — keep emitting for back-compat
+  d?: string;                // LEGACY field — keep emitting for back-compat
+};
+
+Requirements:
+
+Coalesce single-char inserts within 200 ms into a single event so we don't drown in per-keystroke noise.
+Track caret position via window.getSelection() (contentEditable) or selectionStart (textarea); record caretBefore and caretAfter on every insert/delete.
+Emit explicit caretJump events when the user clicks/arrows to a non-adjacent position (>1 char move).
+Emit focus/blur events.
+Keep the legacy event shape working — if this course already logs {t, k, d} style events, keep emitting those fields in addition to the new ones, so existing replays don't break.
+The accommodated/disability-mode input path (if this course has one) must also emit the rich events. Accommodation removes the live UI signal, not the underlying logging.
+2. Pure analyzer module (backend, no I/O)
+Create lib/processForensics.ts (or your project's equivalent location) that exports:
+
+type ProcessFeatures = { /* see below */ };
+type ProcessClass = "human" | "mixed" | "likelyAI";
+type ProcessBaseline = { n: number; features: Record<string, number> };
+type ProcessAnalysis = {
+  processScore: number;             // 0–100
+  processClass: ProcessClass;
+  features: ProcessFeatures;
+  flags: string[];
+  baselineAdjustedScore?: number | null;
+  baselineDeviation?: Record<string, number> | null;
+};
+export function extractFeatures(events: ProcessEvent[], finalText: string): ProcessFeatures;
+export function analyzeProcess(events: ProcessEvent[], finalText: string): ProcessAnalysis;
+export function analyzeProcessWithBaseline(events: ProcessEvent[], finalText: string, baseline: ProcessBaseline | null): ProcessAnalysis;
+export function foldIntoBaseline(baseline: ProcessBaseline | null, features: ProcessFeatures): ProcessBaseline;
+export function compareToBaseline(features: ProcessFeatures, baseline: ProcessBaseline | null): Record<string, number>;
+
+Compute these 11 features:
+
+burstUniformity — stdev of inter-keystroke gaps inside bursts (low = robotic).
+pauseBeforeNewSentence — median ms from the previous non-whitespace char to the first non-whitespace char after ./?/!. Whitespace alone does not count as the next char. Build a per-char timestamp series from inserts (deletes excluded) and walk it; do not just measure gap to the next event.
+pauseBeforeNewParagraph — same idea, but the gap must contain \n\n.
+deletionRatio — total deleted chars / total inserted chars. Healthy human ~15–40 %.
+structuralEditCount — count of "large or far-back" deletions (e.g. delete length ≥ 30 chars OR caret position < docLen / 2).
+caretBacktrackCount — backward caret jumps > 100 chars.
+abandonedStartCount — burst of ≥ 30 chars where ≥ 80 % is deleted within 60 s and the next insert lands within 10 chars of the original burst's start caret. When caretBefore == null on a candidate, continue (do not break) — legacy/mixed streams have some events without caret data.
+burstLengthCV — coefficient of variation of burst lengths.
+frontToBackLinearity — fraction of inserts that landed at end-of-doc.
+totalActiveSeconds — sum of inter-event gaps, capped at 30 s per gap.
+charsPerSecond — final length / totalActiveSeconds.
+Score: weighted sum → 0–100. Tunable WEIGHTS constant at top of file. Class thresholds: < 35 human, 35–65 mixed, ≥ 65 likelyAI.
+
+Flags: emit human-readable strings into flags[] for every feature that crosses a suspicion threshold (e.g. "burstUniformity is 12 ms (transcription-like)").
+
+Baseline math: foldIntoBaseline does running-mean over n samples. compareToBaseline returns per-feature (this - baseline) / baseline ratios. analyzeProcessWithBaseline computes the absolute score, then a baseline-adjusted score that softens unusually-high deviations from the student's own baseline (a student whose baseline burstUniformity is 12 ms isn't "robotic" for them).
+
+3. DB schema additions
+Add to the students table (or your equivalent):
+
+processBaseline jsonb (nullable).
+Add to the submissions table:
+
+processScore int (nullable)
+processClass text (nullable, one of human | mixed | likelyAI)
+processFeatures jsonb (nullable)
+processFlags jsonb (nullable, string[])
+Migrate (Drizzle: pnpm --filter @workspace/db run push; otherwise this app's normal migration path).
+
+4. Submission pipeline wiring
+In the route that handles assignment submission:
+
+Load the student's processBaseline.
+Guard against sparse data: if events < 20 OR content < 80 chars, skip analysis entirely (set process fields to null). Otherwise small/empty streams get scored as likelyAI because "no human signals present" reads the same as "robotic".
+Run analyzeProcessWithBaseline(events, content, baseline).
+Persist processScore, processClass, processFlags, and processFeatures — and into processFeatures also stuff __baselineAdjustedScore, __baselineDeviation, __baselineSnapshot, and __baselineN (double-underscore keys so the admin renderer can ignore them in the feature loop). This avoids a second migration while still persisting "value vs this student's baseline at the time".
+Fold into baseline only if baseline.n < 2. After 2 submissions the baseline is frozen — this is deliberate, to prevent slow-drift attacks where a student gradually trains the baseline toward their cheating profile.
+The student-facing GET /submissions response must strip the new columns (zod schema). Only the admin endpoint returns them.
+5. Live throttled signal
+Add an endpoint like POST /<canvas-or-editor>/:assignmentId/processScore that:
+
+Accepts the current event stream + current content.
+Returns only { score, class }. No features. No flags. Do not leak more. Leaking feature names gives sophisticated cheaters a tuning oracle.
+Requires ≥ 20 events and ≥ 80 chars before responding (otherwise return null/neutral).
+Skips entirely for accommodated students.
+The frontend calls this endpoint throttled to once per 60 s and renders the result as a second traffic-light bar next to the existing GPTZero one.
+
+6. Admin UI panel
+Add a ProcessForensicsView to the admin submission detail page:
+
+Score badge color-coded by class.
+Class badge.
+Baseline-adjusted score badge with the snapshot's n (e.g. "vs. this student's baseline (n=2): 41").
+"No baseline yet" badge for first submissions.
+Findings/flags as a bullet list.
+A 4-column feature table: Feature / This submission / Student baseline / Notes (the "Notes" column has static hint text describing what each feature means).
+A burst-length timeline chart (chars per burst).
+7. Diagnostic tests
+In your in-process diagnostic suite, add two synthetic tests:
+
+Synthetic transcription: build an event stream of perfectly uniform 4-char bursts at 180 ms intervals with no deletions, no caret backtracking, no abandoned starts. Assert processScore ≥ 70 and class likelyAI.
+Synthetic composition: build an event stream with varied burst lengths, an abandoned-and-restarted start (write 60 chars, delete 55, retry), at least 2 caret backtracks > 100 chars, and at least 2 structural deletes. Assert processScore < 35 and class human.
+Both must pass. Tune WEIGHTS if needed until they do.
+
+8. Do NOT expose the feature list to students
+The integrity-disclosure modal (or whatever your monitoring disclosure surface is called) must not mention process forensics, baseline tracking, burst timing, deletion ratio, or any feature names. Students see "your work is monitored." That's it. The rationale is in the threat model: naming the signals creates a curriculum for evading them.
+
+What "done" looks like
+Both synthetic diagnostic tests pass green.
+A submission row carries non-null processScore/processClass/processFeatures/processFlags whenever the student's session had ≥ 20 events and ≥ 80 chars.
+The admin submission detail page renders the process-forensics panel with a 4-column feature table, baseline-adjusted score badge, and burst chart.
+The student-facing canvas/editor shows a second traffic-light bar that updates at most once per 60 s.
+A real human writing a real essay in the canvas produces a human class. A deliberate transcription test (paste AI text in a hidden tab, retype it slowly into the canvas) produces likelyAI.
+The disclosure modal is unchanged in its content (still generic).
+Legacy submissions without keystroke data still load in the admin UI without crashing — show "No writing-process analysis available (legacy submission)."
+Reference implementation
+A reference implementation of this exact spec exists in the English Composition 101 course. Key files for cross-reference:
+
+Analyzer: artifacts/api-server/src/lib/processForensics.ts
+Submission pipeline: artifacts/api-server/src/routes/submissions.ts
+Live endpoint: artifacts/api-server/src/routes/canvas.ts
+Diagnostic tests: artifacts/api-server/src/routes/diagnostic.ts
+Frontend canvas: artifacts/phil-101/src/components/integrity-canvas.tsx
+Admin panel: artifacts/phil-101/src/pages/admin-submission-detail.tsx
+API client: artifacts/phil-101/src/lib/integrity-api.ts
+Schema: lib/db/src/schema/students.ts, lib/db/src/schema/submissions.ts
+You may copy the analyzer and diagnostic tests verbatim — they are pure and have no app-specific dependencies. The submission pipeline, live endpoint, frontend canvas, and admin panel must be adapted to this course's existing patterns (route shapes, auth middleware, component library, table/column names). Do not blindly copy frontend code if the courses use different UI libraries.
+
+Final step
+After implementing, run a code review (architect-style) over the new files with includeGitDiff: true and fix anything it flags as critical before declaring the task complete. Then update this app's replit.md with a section documenting:
+
+The two-layer detection design.
+The per-student baseline ("memory") behavior and the n=2 freeze rule.
+Why the disclosure modal is intentionally generic.
+The class thresholds and weight-tuning workflow.
+Where the diagnostic tests live and how to run them.

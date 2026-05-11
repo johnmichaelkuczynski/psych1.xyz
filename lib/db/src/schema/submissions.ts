@@ -38,6 +38,15 @@ export const submissionsTable = pgTable("submissions", {
   flaggedOnSubmit: boolean("flagged_on_submit").notNull().default(false),
   /** "pending" | "reviewed" | "flagged" — instructor workflow */
   reviewStatus: text("review_status").notNull().default("pending"),
+  // ---- Process forensics (second AI-detection layer) ----
+  /** 0–100 weighted score from writing-process features. */
+  processScore: integer("process_score"),
+  /** "human" | "mixed" | "likelyAI" */
+  processClass: text("process_class"),
+  /** Raw computed features + __baselineAdjustedScore/__baselineDeviation/__baselineSnapshot/__baselineN */
+  processFeatures: jsonb("process_features"),
+  /** Human-readable suspicion strings */
+  processFlags: jsonb("process_flags"),
 });
 
 export const insertSubmissionSchema = createInsertSchema(submissionsTable).omit(

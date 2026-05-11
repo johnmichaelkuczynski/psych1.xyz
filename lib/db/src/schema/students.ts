@@ -1,5 +1,6 @@
 import {
   boolean,
+  jsonb,
   pgTable,
   serial,
   text,
@@ -19,6 +20,8 @@ export const studentsTable = pgTable("students", {
   isAdmin: boolean("is_admin").notNull().default(false),
   accommodated: boolean("accommodated").notNull().default(false),
   integrityAckAt: timestamp("integrity_ack_at", { withTimezone: true }),
+  /** Per-student writing-process baseline: { n, features }. Frozen at n=2. */
+  processBaseline: jsonb("process_baseline"),
 });
 
 export const insertStudentSchema = createInsertSchema(studentsTable).omit({
