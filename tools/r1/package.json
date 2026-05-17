@@ -1,0 +1,15 @@
+{
+  "name": "r1-synthetic-student",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "R1 synthetic-student beta-tester for Philosophy 101 (standalone, NOT a pnpm workspace package).",
+  "scripts": {
+    "start": "node run.mjs",
+    "smoke": "MAX_MODULES=2 HEADLESS=true node run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "playwright": "^1.55.0"
+  }
+}
