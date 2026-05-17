@@ -26,7 +26,7 @@ const __dirname = path.dirname(__filename);
 // =============================================================================
 
 const APP_URL          = process.env.APP_URL          || "http://localhost:80";
-const APP_BASE         = (process.env.APP_BASE        || "/phil-101").replace(/\/$/, "");
+const APP_BASE         = (process.env.APP_BASE        || "").replace(/\/$/, "");
 const API_URL          = process.env.API_URL          || "http://localhost:8080";
 const HEADLESS         = String(process.env.HEADLESS  || "false").toLowerCase() === "true";
 const MAX_MODULES      = Math.max(1, Math.min(12, parseInt(process.env.MAX_MODULES || "3", 10)));
@@ -772,7 +772,15 @@ async function fn1_signIn(page) {
     step_description:`Fill input-email and input-name with ${R1_EMAIL} / ${R1_NAME} and click Login.`,
     expects_api_call:true,
   }, {
-    navigate: () => page.goto(appUrl("/"), { waitUntil: "domcontentloaded" }),
+    navigate: async () => {
+      await page.goto(appUrl("/"), { waitUntil: "domcontentloaded" });
+      // SPA hydrates after navigation; wait for the form to actually mount
+      try {
+        await page.locator('[data-testid="input-email"]').first().waitFor({ state: "visible", timeout: 10000 });
+      } catch {
+        // Form might be absent because session is already established — that's fine
+      }
+    },
     act: async () => {
       const email = page.locator('[data-testid="input-email"]').first();
       const name  = page.locator('[data-testid="input-name"]').first();

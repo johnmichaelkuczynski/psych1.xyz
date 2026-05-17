@@ -63,7 +63,7 @@ Exit codes: `0` success, `2` fatal harness error, `3` sanity-check failure
 | var | default | purpose |
 | --- | --- | --- |
 | `APP_URL` | `http://localhost:80` | Shared proxy. **Never** the Vite port. |
-| `APP_BASE` | `/phil-101` | Path prefix where phil-101 is mounted. |
+| `APP_BASE` | `` (empty) | Path prefix where phil-101 is mounted. Set to `/phil-101` if your workflow uses `BASE_PATH=/phil-101/`. |
 | `API_URL` | `http://localhost:8080` | Used for URL normalization only. |
 | `HEADLESS` | `false` | `true` for CI / Replit workflows. |
 | `MAX_MODULES` | `3` | 1..12. Smoke = 2; full = 12. |
