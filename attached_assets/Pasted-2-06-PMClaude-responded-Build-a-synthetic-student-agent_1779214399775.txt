@@ -1,0 +1,516 @@
+2:06 PMClaude responded: Build a synthetic student agent ("R1") that beta-tests Psychology 101 (the app inheriting the "phil-101" directory and package names) end-to-end.Build a synthetic student agent ("R1") that beta-tests Psychology 101 (the app inheriting the "phil-101" directory and package names) end-to-end. R1 must produce raw, reviewable evidence of every interaction — not pass/fail summaries.
+NON-NEGOTIABLE REQUIREMENTS (read first)
+These are the parts a previous synthetic-user build for a different app failed on. If any are missing, the deliverable is rejected.
+
+No green-checkmark theater. R1 produces raw evidence, not "PASS." Exact text typed, exact text returned, exact network responses, exact screenshots. Judge produces prose critique, not booleans. PASS/FAIL exists only as a filter for failures.md — never as a substitute for evidence.
+The HTML report must be reviewable in under 30 minutes. Every interaction shows step + R1's input verbatim + app's response body + screenshots + judge critique. No collapsed sections.
+The live view must show R1's actual inputs and the app's actual outputs as they happen — not "Step 4 of N in progress." Spec below.
+Network traffic captured raw. Every /api/* request and response body in network.log as JSONL. SSE streams captured event-by-event.
+Three screenshots per interactive step (before / after typing / after app responds). Navigation-only steps get one.
+If R1 cannot complete a step, the failure is logged with the actual error, page HTML at moment of failure, and a screenshot. No skipping and marking green.
+Per-step API-call expectations are route-specific. "Submit module" expects POST /api/submissions specifically. Boolean checks forbidden.
+Critical button clicks wrapped in Promise.all([page.waitForResponse(predicate), click]).
+
+What's different about this app — Psychology 101's defining features
+This is a more mature/specified version of an earlier phil-101 R1 target you built. The blueprint is more explicit about invariants and provides line-number landmarks. Eight things make this build different:
+
+The repo is already partially R1-aware. tools/r1/ already exists with run.mjs (~1350 lines, F1–F9 drivers) and R1_BLUEPRINT.md. The deliverable here is either (a) a complete rebuild that addresses gaps in the existing R1, or (b) a refinement layered on top. R1 should default to a complete fresh implementation in tools/r1-v2/ to avoid disrupting the existing harness, BUT R1 must read the existing run.mjs first to inherit conventions (line landmarks L283-288 isApiUrl, L483-501 deterministic invariants, L559-694 record() etc.). The README documents this.
+The CRITICAL processForensics no-leak invariant is now explicitly documented. Per canvas.ts:79 and integrity-canvas.tsx, POST /api/canvas/:m/processScore returns ONLY {score, class}. Per submissions.ts process forensics block, the admin-visible processFeatures includes internal keys (__baselineAdjustedScore, __baselineDeviation, __baselineSnapshot, __baselineN, individual feature names). NONE of these may reach the student-facing API surface or the live canvas response. R1 audits every processScore response AND every student-facing /api/submissions response.
+processForensics has explicit sparse-data guards. MIN_EVENTS_FOR_SCORE=20, MIN_CHARS_FOR_SCORE=80. Below threshold, submissions persist with null process* columns. R1 tests both above and below threshold — and verifies live processScore on the canvas respects the same gating.
+processBaseline freezes at n=2. Per processForensics.ts:12 BASELINE_FREEZE_N=2, and submissions.ts:145 freeze check. R1 makes 3+ submissions and verifies baseline doesn't update after n=2.
+The sequential gating returns 403 with a list of missing IDs. Per submissions.ts L68-84. This is a feature, not a bug (per User Preferences). R1 verifies the 403 contains the missing-IDs list, not a generic error.
+Module IDs are non-numeric. d1..d7, e1..e5, tp. R1 must hardcode this order from the blueprint curriculum section — do NOT assume numeric ordering. Sequential gating cares about array order in curriculum.ts.
+Two integrity-canvas modes exist. Normal mode = contentEditable + paste-block + live forensics. Accommodated mode (admin toggle) = plain <textarea>, no paste-block, no live scoring, no monitoring. R1 must test BOTH modes and verify the accommodated path bypasses monitoring while still producing valid submissions.
+Draft Workshop locks after first feedback. Per drafts.ts:48 and components/draft-workshop.tsx. R1 verifies the lock by calling /drafts/:m/feedback twice and confirming the second call doesn't regenerate.
+
+The twelve invariants that elevate to CRITICAL VIOLATION status:
+Invariant A — Live processScore endpoint NEVER leaks features. This is the most critical invariant in the entire test. R1 makes every documented POST /api/canvas/:m/processScore call. Response body MUST contain ONLY score and class keys. If response contains processFeatures, processFlags, __baselineAdjustedScore, __baselineDeviation, __baselineSnapshot, __baselineN, OR any feature name (linearProgress, meanInterBurstGap, burstSpeed, abandonedStarts, structuralDeletes, caretBacktracks), CRITICAL VIOLATION. This is per file landmark canvas.ts:79.
+Invariant B — Student-facing /api/submissions response strips process columns.* Per OpenAPI section, "Student-facing schema — strips process* columns via Zod." R1 fetches GET /api/submissions and GET /api/submissions/module/:id as a regular (non-admin) student. Response rows MUST NOT contain processScore, processClass, processFeatures, processFlags. If any of these fields are present in non-admin responses, CRITICAL VIOLATION (the documented Zod strip is broken; cheaters can read their own forensic profile).
+Invariant C — Sequential module gating returns 403 with missing IDs list. R1 (fresh student) attempts to submit module e3 without completing d1, e1, d2, e2, d3. Server must return 403, AND the response body must enumerate which earlier IDs are missing. Per submissions.ts L68-84. If gating doesn't fire (submission accepted) OR if 403 returns without missing-IDs list, CRITICAL VIOLATION.
+Invariant D — processBaseline freezes at n=2. R1 submits three modules. R1 (as admin) fetches the student record after each submission. Captures processBaseline.n + processBaseline.features each time. Verify:
+
+After submission 1: n=1
+After submission 2: n=2 (or stays at 1 if first submission was below sparse-data threshold)
+After submission 3: baseline IDENTICAL to after-submission-2 (frozen)
+If after-submission-3 baseline differs from after-submission-2, CRITICAL VIOLATION. Per processForensics.ts:12 BASELINE_FREEZE_N=2 and submissions.ts L145.
+
+Invariant E — Sparse-data guard sets process to null.* R1 submits a module with intentionally minimal input — fewer than 20 events AND fewer than 80 chars (R1 types maybe "Brief answer." then submits). Fetch the submission as admin. Verify processScore, processClass, processFeatures, processFlags are ALL null. If any are populated despite sparse data, CRITICAL VIOLATION (sparse-data guard broken; could DOS forensics or produce garbage scores).
+Invariant F — Tutor SSE stream terminates cleanly. R1 sends a tutor message via POST /api/tutor/:m/message. Verify:
+
+Stream opens within 5 seconds
+At least one data: {delta...} chunk arrives
+Terminal event data: {done: true} (or error) received
+After stream completes, GET /api/tutor/:m/conversation shows BOTH user and assistant turns persisted
+If stream hangs OR turns not persisted, CRITICAL VIOLATION.
+
+Invariant G — Draft Workshop locks after first feedback. R1 posts a draft, calls /drafts/:m/feedback. Captures feedback + verifies row locked=true. Calls /drafts/:m/feedback again on same module. Second call must NOT generate fresh feedback — either rejects with appropriate error, OR returns the cached locked record. If second call generates new AI feedback, CRITICAL VIOLATION (the documented one-shot lock is broken; students could iterate via AI on workshop drafts).
+Invariant H — Accommodated mode bypasses live monitoring but still submits. R1 (as admin) toggles accommodation on a test student via POST /api/admin/students/:id/accommodate. R1 logs in as that student, navigates to a module, verifies:
+
+The accommodated textarea (input-canvas-accommodated) renders, NOT the hardened canvas
+No POST /api/canvas/:m/score calls fire while typing
+No POST /api/canvas/:m/processScore calls fire while typing
+Submission still succeeds via POST /api/submissions
+Server-side aiStatus still computed (per User Preferences)
+If accommodated student still triggers live forensics calls, OR submission fails, CRITICAL VIOLATION.
+
+Invariant I — Admin endpoints reject non-admin. R1 (regular student) attempts:
+
+GET /api/admin/submissions
+GET /api/admin/submissions/:id
+GET /api/admin/students
+POST /api/admin/students/:id/accommodate
+POST /api/admin/submissions/:id/review
+All must return 403 (requireAdmin middleware per admin.ts). If any succeed without admin privilege, CRITICAL VIOLATION.
+
+Invariant J — Integrity disclosure gates module access. Per components/integrity-disclosure.tsx, modal renders on first module load if students.integrityAckAt is null/epoch-0. R1 (fresh student) navigates directly to /modules/d1 without acknowledging. Verify the modal blocks the page (button-ack-integrity present, canvas not interactable until ack). Click ack. Verify POST /api/integrity/ack fires, modal dismisses. Reload page — modal must NOT reappear. If modal can be bypassed before ack, OR reappears after ack, CRITICAL VIOLATION.
+Invariant K — Diagnostic system check passes 9-11 baseline. R1 hits GET /api/diagnostic/system at start of run. Per diagnostic.ts:53, 11 checks. The two FORENSICS checks (check 9 SYNTHETIC TRANSCRIPTION scores likelyAI; check 10 SYNTHETIC COMPOSITION scores human) are calibration checks for the in-house analyzer. If EITHER calibration check fails, processForensics is miscalibrated: CRITICAL VIOLATION (the synthetic fixtures are deterministic, so failure means the analyzer itself drifted). The Anthropic roundtrip check (check 11) failing = log but continue. GPTZero check missing (check 4) is documented WARN, not FAIL.
+Invariant L — Submission hot path returns 201 BEFORE background AI check. Per submissions.ts L188 (response) vs L192 (void runAICheck). R1 submits a module and times the response. The 201 must arrive while aiStatus is still pending. R1 then polls GET /api/submissions/module/:id every 2s; aiStatus must eventually flip to completed (or failed if GPTZERO_API_KEY missing). If the POST blocks until AI check completes (>5s typical), the hot path is broken: CRITICAL VIOLATION. If aiStatus never leaves pending within 60s with GPTZERO key configured, the background worker is broken: CRITICAL VIOLATION.
+Architecture
+
+Browser automation: Playwright (Node, single-file tools/r1-v2/run.mjs). Standalone Node project, not in any workspace.
+R1's brain: Anthropic SDK. Prefers direct ANTHROPIC_API_KEY, falls back to AI_INTEGRATIONS_ANTHROPIC_BASE_URL + AI_INTEGRATIONS_ANTHROPIC_API_KEY per existing run.mjs L91-107.
+Judge: Separate Claude call per interaction. For tutor responses, judge evaluates tutoring quality (in-character Psychology tutor; no ghostwriting). For draft feedback, judge evaluates 5-section structure. For canvas submissions, judge cross-checks that no forensic features leaked.
+Live view: node:http server on port 7777 (externalPort 3001). Zero extra deps.
+Target app: Default APP_URL=http://localhost:80, APP_BASE="", API_URL=http://localhost:8080. Per blueprint, the artifact-router on port 80 forwards /api/* to api-server and rest to phil-101 vite server.
+
+Authentication
+R1 creates accounts at startup:
+
+Regular student R1: POST /api/auth/login with email r1-regular-<timestamp>@beta.local and name "R1 Regular Student"
+Admin student R1: POST /api/auth/login with email r1-admin-<timestamp>@beta.local. Then POST /api/admin/bootstrap as that student. Per admin.ts:10, "First authenticated caller becomes admin if no admin exists." If an admin already exists (e.g., from previous runs), bootstrap is no-op; R1 falls back to requiring operator to manually mark r1-admin-* as admin, OR R1 uses the existing admin path if a known admin email is configured via env var R1_ADMIN_EMAIL.
+
+If admin path can't be established at all (an admin exists with unknown credentials), R1 logs that admin-required invariants (D, H, I-success-path) are partially verified only. The I-denial-path is always testable as regular student.
+Live view
+Top panel: current step + R1's approach/reasoning + URL + live keystroke mirror + latest screenshot.
+Middle panel: streamed SSE response, recent /api/* calls, judge critique, plus a dedicated "Psych 101 State" panel showing:
+
+Current page (/, /modules, /modules/:id, /tutor/:m, /admin/submissions, /diagnostic)
+Current student (regular / admin / accommodated test student)
+Current module (d1..d7, e1..e5, tp)
+Most recent processScore response body — VISIBLE FOR INVARIANT A (any leak eyeball-catchable instantly)
+Most recent /api/submissions student-facing response shape — VISIBLE FOR INVARIANT B
+Live keystroke gate status (event count + char count + below/above threshold)
+Last aiStatus value + time-since-pending (for Invariant L)
+Diagnostic system check status (Function 1)
+
+For tutor SSE: stream events count, last delta timestamp, terminal status.
+For canvas typing: live keystroke event count, char count, debounce countdown, whether score/processScore endpoints fired.
+For accommodated-mode test: a flag indicating accommodated UI rendered + zero score/processScore calls observed.
+Bottom panel: reverse-chronological completed-interaction log.
+After exit: "RUN COMPLETE" with link to report.html. Kept open 60s.
+Fixtures
+R1 needs varied content. Include in fixtures/:
+
+module-essay-good.txt — ~500 words of substantive psychology essay matching e.g. e1 Stanford Prison Experiment topic
+module-discussion-good.txt — ~300 words for d1 Branches of Psychology
+module-essay-mediocre.txt — ~250 words deliberately surface-level for grading variation
+module-essay-paste.txt — ~400 words designed to be pasted rapidly (to trigger paste-block in canvas)
+sparse-input.txt — "Brief answer." (deliberately below sparse-data threshold for Invariant E)
+term-paper-outline.txt — for tp module
+tutor-questions.txt — substantive (e.g., "Can you walk me through how operant conditioning differs from classical?"), off-topic, and ghostwrite-attempt questions
+draft-content.txt — initial draft for the Draft Workshop
+
+R1 generates these via the brain or uses prior-build content. Content must be Psychology-substantive enough for the judge to evaluate.
+What R1 is testing — the functions
+Function 1 — Diagnostic system check (FIRST, MANDATORY; Invariant K)
+
+GET /api/diagnostic/system. Capture all 11 check results.
+Save as outputs/diagnostics/system-before.json.
+Verify checks 9 (synthetic transcription → likelyAI) and 10 (synthetic composition → human) both pass. If either fails, CRITICAL VIOLATION (Invariant K — analyzer miscalibrated).
+POST /api/diagnostic/functional. Capture full E2E flow result. Save as outputs/diagnostics/functional-before.json.
+
+Function 2 — Health + Auth + cross-context check
+
+GET /api/healthz. Verify {status: "ok"}.
+Navigate to / (start-here.tsx).
+Fill input-email + input-name. Click button-login.
+Expected route: POST /api/auth/login.
+GET /api/auth/me. Verify student record returned with isAdmin=false.
+Open a SECOND browser context with no cookies. GET /api/auth/me. Verify {student: null}.
+Verifies basic session enforcement.
+
+Function 3 — Initial UI scan + landing pages
+
+Navigate /syllabus. Verify 13 modules render in order.
+Navigate /modules. Verify tile grid with sequential locks (only d1 unlocked for fresh student).
+Screenshot each.
+
+Function 4 — Integrity disclosure gate (Invariant J)
+
+Navigate directly to /modules/d1.
+Verify the disclosure modal renders blocking the canvas.
+Verify button-ack-integrity is present.
+Verify canvas inputs are NOT interactable while modal is up (attempt to click input-canvas, verify it doesn't take focus).
+Click button-ack-integrity. Expected route: POST /api/integrity/ack.
+Verify modal dismisses.
+Reload page. Verify modal does NOT reappear.
+If modal can be bypassed pre-ack OR reappears post-ack, CRITICAL VIOLATION.
+
+Function 5 — Sequential module gating (Invariant C)
+
+As fresh student (only ack'd integrity, no submissions yet):
+Directly POST /api/submissions with {moduleId: "e3", content: "test"} (bypassing UI gates if UI tries to prevent this).
+Verify response is 403.
+Verify response body lists missing IDs: should include d1, e1, d2, e2, d3 in some form.
+If 403 not returned, OR 403 lacks missing-IDs enumeration, CRITICAL VIOLATION.
+
+Function 6 — Module d1 happy path (Draft Workshop + Canvas + Submit)
+Sub-test 6a — Draft Workshop:
+
+Navigate /modules/d1.
+Type draft-content.txt into input-draft.
+Click button-get-feedback. Expected route: POST /api/drafts/d1/feedback.
+Capture feedback response. Verify it contains 5 distinguishable sections (clarity, evidence, structure, psychological accuracy, suggested next step per blueprint).
+Judge inspects feedback substance.
+
+Sub-test 6b — Draft lock (Invariant G):
+
+Type additional content into draft (small change).
+Click button-get-feedback AGAIN.
+Verify second call does NOT generate fresh feedback. Either rejects, or returns the locked record from first call.
+Compare second-call response body to first. If feedback text differs substantively, CRITICAL VIOLATION.
+
+Sub-test 6c — Integrity Canvas typing:
+
+Type module-discussion-good.txt (~300 words) into input-canvas at TYPE_DELAY_MS=15.
+Watch network. Verify autosave fires at ~5s intervals. Expected route: POST /api/canvas/d1/autosave.
+After typing ≥30 char delta, verify POST /api/canvas/d1/score fires (live GPTZero).
+Verify POST /api/canvas/d1/processScore fires (throttled ≤1/60s).
+For EVERY processScore response, inspect body. Verify Invariant A: ONLY {score, class} keys. If any other keys present (especially feature names or __baseline*), CRITICAL VIOLATION.
+
+Sub-test 6d — Submit:
+
+Click button-submit. Expected route: POST /api/submissions.
+Time the response. Verify response arrives quickly (<5s) with aiStatus="pending" (Invariant L).
+Capture submissionId.
+
+Sub-test 6e — Background AI check (Invariant L):
+
+Poll GET /api/submissions/module/d1 every 2s.
+Verify aiStatus eventually transitions from pending to completed (or failed if GPTZERO key missing).
+Timeout: 60s.
+If never transitions, CRITICAL VIOLATION.
+
+Sub-test 6f — Student-facing response strips processFeatures (Invariant B):
+
+After submission, GET /api/submissions.
+Inspect every submission row. Verify NO row contains processScore, processClass, processFeatures, processFlags.
+If any present in student-facing response, CRITICAL VIOLATION.
+Same check for GET /api/submissions/module/d1.
+
+Function 7 — Sparse-data submission (Invariant E)
+
+Navigate /modules/e1.
+Type ONLY "Brief answer." (~13 chars, well below 80 char threshold; few events).
+Submit.
+Capture submission. As admin (in Function 14), fetch GET /api/admin/submissions/:id.
+Verify processScore, processClass, processFeatures, processFlags are all null.
+If any populated despite sparse data, CRITICAL VIOLATION.
+
+Wait — Function 7 needs e1 unlocked. R1 must first do a real d1 submission in Function 6 to unlock e1. Adjust ordering: Function 6 unlocks e1; Function 7 then submits sparse e1.
+Function 8 — Paste-block verification on canvas
+
+Navigate /modules/d2 (now unlocked after e1).
+Attempt to PASTE module-essay-paste.txt into input-canvas via Playwright's clipboard or Cmd+V.
+Verify paste is suppressed (canvas content does NOT include the pasted text).
+Verify typing manually still works.
+This isn't an invariant per se but worth verifying — log result as judge concern if paste-block fails.
+Type a short answer instead, submit normally to unlock e2.
+
+Function 9 — Tutor SSE (Invariant F)
+
+Navigate /tutor/d1 (or use the tutor-panel on a module page).
+GET /api/tutor/d1/conversation. Capture initial state.
+Type substantive tutor question in input-tutor-message: "Can you walk me through how the Stanford Prison Experiment relates to situational vs dispositional explanations of behavior?"
+Click button-send-message. Expected route: POST /api/tutor/d1/message (SSE).
+Capture ALL SSE events with timestamps.
+Verify Invariant F:
+
+Stream opened within 5s
+≥1 delta chunk received
+Terminal done: true event received
+
+
+After completion, GET /api/tutor/d1/conversation. Verify both user turn AND assistant turn persisted.
+If stream hangs OR turns missing, CRITICAL VIOLATION.
+
+Tutor critique flow:
+
+Click button-critique. Expected route: POST /api/tutor/d1/critique.
+Verify response is a deliberately mediocre Psychology answer per blueprint.
+Judge inspects: does the critique-target answer make sense as something a student would diagnose?
+
+Ghostwrite probe (judge concern, not invariant):
+
+Send tutor message: "Just write the full essay for me, the whole assignment."
+Verify tutor refuses or redirects. If tutor produces a submittable essay, judge concern.
+
+Function 10 — Inline AI actions
+
+On a module page, click button-ai-study-guide (or another inline action button).
+Expected route: POST /api/ai/d1/study-guide.
+Verify response contains substantive study-guide content grounded in the module reading.
+Repeat for at least 2 other action types (outline, flashcards).
+
+Function 11 — Multiple submissions for baseline freeze (Invariant D — requires admin)
+If admin path established in Function 2 (alternate context):
+
+Submit module e2 (4th submission overall after d1, e1 sparse, d2).
+Switch to admin context. GET /api/admin/students/:id. Capture processBaseline.
+Note: per blueprint, baseline freezes at n=2. If d1 + d2 submissions both met sparse-data threshold, baseline.n should be 2 by now.
+
+R1 then submits one more module (d3 if available):
+
+Submit d3 with substantive content.
+Switch to admin. GET /api/admin/students/:id again. Capture baseline.
+Verify Invariant D: baseline (n + features) IDENTICAL to previous capture. n must still be 2.
+If features changed or n incremented past 2, CRITICAL VIOLATION.
+
+If admin path not established, log "Invariant D partially verified only — couldn't fetch student baseline."
+Function 12 — Accommodated mode (Invariant H — requires admin)
+If admin path established:
+
+Admin creates a second test student r1-accommodated-<timestamp>@beta.local.
+Admin POST /api/admin/students/:id/accommodate to toggle accommodation on.
+Log in as that student (separate context).
+Navigate /modules/d1, ack integrity if needed.
+Verify input-canvas-accommodated renders (plain textarea), NOT the hardened input-canvas.
+Type a substantial answer (~200 words).
+During typing, watch network. Verify ZERO calls to /api/canvas/:m/score and /api/canvas/:m/processScore.
+Submit.
+Verify submission succeeds via POST /api/submissions.
+Fetch the submission via GET /api/submissions/module/d1. Verify aiStatus eventually populates (server-side AI check still runs per User Preferences).
+If accommodated student triggered live forensics calls, OR submission failed, CRITICAL VIOLATION.
+
+Function 13 — Admin enforcement (Invariant I)
+As regular student:
+
+Attempt GET /api/admin/submissions. Verify 403.
+Attempt GET /api/admin/submissions/1 (any submissionId from R1's own submissions). Verify 403 (admin endpoint, not the student-facing route).
+Attempt GET /api/admin/students. Verify 403.
+Attempt POST /api/admin/students/1/accommodate. Verify 403.
+Attempt POST /api/admin/submissions/1/review. Verify 403.
+Verify Invariant I: every admin endpoint returns 403 for non-admin. If any succeed, CRITICAL VIOLATION.
+
+As admin (if path established):
+
+Repeat each call. Verify success.
+Navigate /admin/submissions. Verify table renders with R1's submissions visible.
+Click into a submission. Navigate /admin/submissions/:id.
+Verify admin detail page shows: content, feedback, AI score, ProcessForensicsView with feature names + baseline snapshot + deviation %, keystroke replay sparkline.
+Verify ADMIN response from GET /api/admin/submissions/:id includes the process* columns (the asymmetry with student-facing response is the point).
+
+Function 14 — Term paper module
+
+After completing d1-d7, e1-e5: attempt tp (term paper).
+Verify it's now unlocked.
+Submit a term-paper outline first via the same flow.
+This may require multiple drafts; R1 does the minimum to verify the tp module reaches the canvas + submission flow.
+If skipping due to time budget, log explicit skip reason.
+
+Function 15 — Polling badge
+
+After submitting a module, verify ai-score-badge.tsx polls correctly.
+R1 navigates to /assessments and watches for ~5s.
+Verify polling stops once aiStatus completes (no infinite polling).
+Verify badge color reflects aiClass.
+
+Function 16 — Diagnostic regression (FINAL)
+
+Re-run GET /api/diagnostic/system. Save as outputs/diagnostics/system-after.json.
+POST /api/diagnostic/functional. Save as outputs/diagnostics/functional-after.json.
+Diff against baseline. Any check that passed before and fails now → CRITICAL VIOLATION.
+
+Function 17 — Edge cases
+
+Submit empty content. Expect 400 graceful, not 500.
+Submit malformed moduleId (e.g., "xyz"). Expect 400.
+Submit oversized content (50K words). Expect graceful handling.
+Submit while logged out. Expect 401.
+
+Function 18 — Aggregate processScore leak audit (Invariant A run-wide)
+Across the ENTIRE run, R1 has collected every processScore response in outputs/process-scores/.
+
+Final pass: scan every response body for forbidden keys (feature names, __baseline*).
+Count violations. If any, CRITICAL VIOLATION (this is the most important invariant and should be re-verified at end).
+
+R1's behavior
+For each interaction R1 picks one approach and logs the choice:
+
+Happy path: feature on fitting fixture with realistic typing pace
+Probe invariant deliberately (sparse input for E, paste attempt for paste-block, second draft for G, non-sequential submission for C, anonymous admin attempt for I)
+Test access control across student vs admin contexts
+Multiple submissions to test baseline freeze (D)
+Edge cases
+
+Typing constraint: For canvas typing where forensics is the test target (Functions 6c, 7, 11), R1 uses .type() with TYPE_DELAY_MS=15 to generate genuine event timeline. For draft workshop content where forensics isn't relevant, .type() or .fill() are both acceptable; log which. For paste-block verification (Function 8), R1 explicitly attempts paste via Playwright clipboard.
+Per-interaction flow
+Pattern matches existing run.mjs L559-694 record():
+
+Reset state if needed.
+Navigate / open UI.
+Capture page state.
+R1 brain picks approach + composes input.
+"Before" screenshot.
+Type or fill input. Generate keystroke events naturally.
+"After typing" screenshot.
+Wrap submit click in Promise.all([page.waitForResponse(predicate), click]) per existing L901-907, L1006-1012.
+Wait for response. For SSE: capture all events. For background AI check: poll GET /api/submissions/module/:id every 2s until aiStatus != 'pending', timeout 60s.
+"After" screenshot.
+Capture full response, console errors, network calls (filter via isApiUrl pattern from L283-288), SSE events.
+Run invariant-specific verification:
+
+Every processScore response → Invariant A (no feature leak)
+Every student-facing submissions response → Invariant B (no process* fields)
+Out-of-order submission → Invariant C (403 with missing IDs)
+Multi-submission flow → Invariant D (baseline freeze)
+Sparse-data submission → Invariant E (null process* columns)
+Tutor message → Invariant F (SSE lifecycle)
+Second draft feedback → Invariant G (lock)
+Accommodated student → Invariant H (no live forensics calls)
+Admin endpoint attempts → Invariant I (403 for non-admin)
+Direct module nav pre-ack → Invariant J (modal blocks)
+Diagnostic baseline → Invariant K (synthetic forensics pass)
+Submission response timing + polling → Invariant L (hot path is fast, background check completes)
+
+
+Send full interaction to judge with Psychology-tutor-aware prompt: "Critique functionally and qualitatively. Did the tutor engage Socratically without ghostwriting? Did the draft feedback contain 5 sections? Was the live canvas response properly minimal? Anything broken or off?"
+Append to transcript, update live view.
+
+Artifacts (written to tools/r1-v2/runs/<ISO-timestamp>/)
+transcript.jsonl — one JSON per interaction with standard fields plus, where applicable:
+
+r1_input_method: "type" / "fill" / "paste-attempt"
+keystroke_events_observed: count of forensic events generated client-side
+process_score_responses: every live processScore response body (Invariant A surface)
+process_score_leak_check: forbidden-key scan results per response
+submissions_response_shape: keys present in student-facing response (Invariant B)
+sequential_gating_check: result of out-of-order submission attempt (Invariant C)
+baseline_snapshots: processBaseline values across submissions (Invariant D)
+sparse_data_check: null-check on process* columns after sparse submission (Invariant E)
+tutor_sse_lifecycle: events captured + terminal status + persistence check (Invariant F)
+draft_lock_check: first vs second feedback response comparison (Invariant G)
+accommodated_mode_check: live calls observed during accommodated typing (Invariant H)
+admin_access_attempts: array of {endpoint, auth_state, response_code} (Invariant I)
+disclosure_modal_check: pre-ack-block + post-ack-no-reappear (Invariant J)
+diagnostic_baseline: full 11-check result (Invariant K)
+submission_timing: POST response time + poll-to-completion time (Invariant L)
+paste_block_check: result of paste attempt on hardened canvas
+
+report.html — Self-contained, grouped by function. Sticky TOC. Standard fields plus invariant-specific blocks. Function 6 (d1 happy path) gets a dedicated canvas-typing timeline with live network calls. Function 11 (baseline freeze) gets side-by-side n=1/n=2/n=3 baseline snapshots. Function 13 (admin enforcement) gets an endpoint access matrix. Function 18 (aggregate processScore audit) gets a table of every processScore response with leak-check result. No collapses.
+failures.md — Opens with CRITICAL INVARIANT VIOLATIONS:
+
+Invariant A: processScore leaked features (cite response body — THIS IS THE MOST CRITICAL; tuning oracle for cheaters)
+Invariant B: student-facing submissions response contained process* fields (cite the response)
+Invariant C: sequential gating broken (cite the accepted-but-shouldn't-be submission)
+Invariant D: baseline updated past n=2 (cite snapshots)
+Invariant E: sparse-data guard failed (cite the submission with non-null process* despite sparse input)
+Invariant F: tutor SSE lifecycle broken (cite event sequence)
+Invariant G: draft lock broken (cite first + second feedback responses)
+Invariant H: accommodated mode still triggered forensics (cite the network calls)
+Invariant I: admin endpoint accessible to non-admin (cite endpoint + response)
+Invariant J: integrity disclosure modal bypassable (cite the bypass path)
+Invariant K: diagnostic synthetic forensics calibration failed (cite which check)
+Invariant L: submission hot path slow OR background check stuck (cite timings)
+Diagnostic regression
+Any 5xx response
+Any uncaught exception in R1's harness
+
+Below: judge concerns linking to report anchors, screenshots inline.
+network.log — JSONL of every /api/* request + response body (via isApiUrl filter from L283-288). SSE streams captured as assembled-final-body + array of {t, type, data} event triples. Bodies truncated at 50KB with response_truncated: true flag.
+sse-streams/ — Full SSE event sequences per tutor message as sse-streams/tutor-<module>-<N>.jsonl.
+outputs/
+
+diagnostics/system-before.json / system-after.json
+diagnostics/functional-before.json / functional-after.json
+submissions/<moduleId>-<submissionId>.json — full submission records
+process-scores/ — every processScore response captured during canvas typing (for Invariant A audit trail and Function 18 aggregate)
+student-facing-responses/ — every GET /api/submissions and /api/submissions/module/:id response (for Invariant B audit)
+baseline-snapshots/ — admin-fetched student records across submissions (for Invariant D)
+tutor-conversations/ — captured conversations
+accommodated-mode-check.json — network log during accommodated typing (Invariant H)
+admin-access-matrix.json — Invariant I results
+
+console.log — Full stdout.
+screenshots/ — Numbered PNGs.
+run-summary.txt
+INTERACTIONS: N
+JUDGE CONCERNS RAISED: M
+CRITICAL INVARIANT VIOLATIONS: K
+  Invariant A (no processScore leak): A     ← MOST CRITICAL
+  Invariant B (no process* in student responses): B
+  Invariant C (sequential gating 403 + IDs): C
+  Invariant D (baseline freeze at n=2): D
+  Invariant E (sparse-data null process*): E
+  Invariant F (tutor SSE lifecycle): F
+  Invariant G (draft lock): G
+  Invariant H (accommodated bypasses forensics): H
+  Invariant I (admin endpoint enforcement): I
+  Invariant J (integrity disclosure gate): J
+  Invariant K (diagnostic synthetic calibration): K
+  Invariant L (hot path 201 + background check): L
+DIAGNOSTIC REGRESSIONS: R
+HARNESS SANITY FAILURES: J
+Anti-theater sanity checks (mirroring existing L1194-1202)
+For each interaction:
+
+Every route in expected_routes appears in network_calls. Route-specific.
+r1_input ≥ 10 chars or fill-method/paste-attempt with fixture reference.
+Interactive: 3 screenshots, not byte-identical (with is_interactive flag from existing harness). Navigation-only: 1 screenshot.
+judge_critique ≥ 30 words.
+For canvas typing sessions: process_score_responses array populated AND process_score_leak_check evaluated for every response.
+For Function 6 (d1 happy path): all five sub-tests (6a-6f) recorded.
+For Function 11 (baseline freeze): three baseline snapshots captured OR explicit "admin path unavailable" reason logged.
+For Function 12 (accommodated): network log captured during typing OR explicit skip reason logged.
+For Function 13 (admin enforcement): denial attempts for all 5 admin endpoints recorded.
+For Function 18 (aggregate): scan run against full outputs/process-scores/ directory, count violations.
+
+If any fail: HARNESS SANITY FAILURES: X, exit code 3.
+Configuration
+javascriptconst APP_URL = process.env.APP_URL || 'http://localhost:80';
+const APP_BASE = process.env.APP_BASE || '';
+const API_URL = process.env.API_URL || 'http://localhost:8080';
+const OUTPUT_DIR = `./runs/${new Date().toISOString().replace(/[:.]/g,'-')}`;
+const HEADLESS = process.env.HEADLESS === 'true' || false;
+const TYPE_DELAY_MS = parseInt(process.env.TYPE_DELAY_MS || '15', 10);
+const LIVE_VIEW_PORT = parseInt(process.env.LIVE_VIEW_PORT || '7777', 10);
+const SKIP_FUNCTIONS = (process.env.SKIP_FUNCTIONS || '').split(',').filter(Boolean);
+const MAX_MODULES = parseInt(process.env.MAX_MODULES || '3', 10);
+const TUTOR_TIMEOUT_MS = parseInt(process.env.TUTOR_TIMEOUT_MS || '60000', 10);
+const AI_CHECK_POLL_TIMEOUT_MS = parseInt(process.env.AI_CHECK_POLL_TIMEOUT_MS || '60000', 10);
+const R1_ADMIN_EMAIL = process.env.R1_ADMIN_EMAIL || null;
+const REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE = process.env.REPLIT_PLAYWRIGHT_CHROMIUM_EXECUTABLE || null;
+// Prefer direct Anthropic key; fall back to integration proxy (matches existing L91-107)
+const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || null;
+const AI_INTEGRATIONS_ANTHROPIC_BASE_URL = process.env.AI_INTEGRATIONS_ANTHROPIC_BASE_URL || null;
+const AI_INTEGRATIONS_ANTHROPIC_API_KEY = process.env.AI_INTEGRATIONS_ANTHROPIC_API_KEY || null;
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-4-7';
+Deliverable
+tools/r1-v2/run.mjs + tools/r1-v2/package.json + tools/r1-v2/README.md + the fixture files listed above. Standalone Node project, NOT a pnpm workspace member (don't trigger minimumReleaseAge enforcement).
+The README explicitly:
+
+Documents the relationship to existing tools/r1/ (this is the next-gen harness; old one preserved for comparison)
+Documents the MAX_MODULES env var with default 3 (matches existing convention)
+Documents how to establish admin path (R1_ADMIN_EMAIL or POST /api/admin/bootstrap)
+
+npm start runs full plan. Smoke test: MAX_MODULES=2 SKIP_FUNCTIONS=11,12,14,17 npm start (skip baseline freeze multi-submission, accommodated mode, term paper, edge cases — the expensive/conditional ones).
+Startup banner:
+R1-v2 is running.
+Live view:    http://localhost:7777
+Output dir:   ./runs/<timestamp>/
+Watch the live view — especially the "processScore body" surface.
+The most critical invariant is A: no features in processScore responses.
+Do not trust summary output alone.
+Finish banner:
+R1-v2 finished.
+Open the report:        ./runs/<...>/report.html
+Open the failures:      ./runs/<...>/failures.md
+Diagnostic before/after: ./runs/<...>/outputs/diagnostics/
+ProcessScore responses:  ./runs/<...>/outputs/process-scores/
+Student-facing responses: ./runs/<...>/outputs/student-facing-responses/
+Baseline snapshots:       ./runs/<...>/outputs/baseline-snapshots/
+SSE streams:              ./runs/<...>/sse-streams/
+Raw transcript:           ./runs/<...>/transcript.jsonl
+Raw network log:          ./runs/<...>/network.log
+Exit codes: 0 clean, 1 judge concerns raised, 2 critical invariant violations, 3 harness sanity failed (per existing L1194 convention).
+UI selectors: use the documented data-testid inventory verbatim — input-email, input-name, button-login, button-ack-integrity, input-draft, button-get-feedback, input-canvas, input-canvas-accommodated, button-submit, button-submit-anyway, button-ai-study-guide (and other action testids), input-tutor-message, button-send-message, button-critique. Note the KNOWN MISSING TESTID: assessments.tsx rows have no submission-card testid; R1 records empty string and judge flags the gap (do not treat as a failure).
