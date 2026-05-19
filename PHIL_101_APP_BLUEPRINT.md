@@ -1,15 +1,32 @@
 ═══════════════════════════════════════════════════════════════════════════════
-PHILOSOPHY 101 — COMPLETE APP BLUEPRINT
+PSYCHOLOGY 101 — COMPLETE APP BLUEPRINT
 (Hand this whole file to Claude. It is enough context to fine-tune anything
 without re-reading the codebase from scratch.)
 ═══════════════════════════════════════════════════════════════════════════════
 
 ONE-LINE DESCRIPTION
-A pnpm monorepo that ships a single-course web app ("Philosophy 101", actually
-Psychology 101 content) with a tutor (Claude Sonnet 4.5), AI-detection on every
-submission (GPTZero + a second in-house "writing-process forensics" layer),
-sequential-module gating, an admin replay/forensics dashboard, and a Playwright
-synthetic-student beta-tester harness called R1.
+A pnpm monorepo that ships a single-course web app for an introductory
+PSYCHOLOGY course (Branches of Psychology, Stanford Prison Experiment, classical/
+operant/observational conditioning, eyewitness memory & Loftus, mind-brain
+problem, nature vs. nurture, defining mental illness, Milgram obedience studies,
+cognitive biases, bystander effect, plus a term paper). It includes a tutor
+(Claude Sonnet 4.5), AI-detection on every submission (GPTZero + a second
+in-house "writing-process forensics" layer), sequential-module gating, an admin
+replay/forensics dashboard, and a Playwright synthetic-student beta-tester
+harness called R1.
+
+⚠ NAMING NOTE — THE REPO USES LEGACY "PHILOSOPHY" / "PHIL-101" LABELS
+The web artifact directory is `artifacts/phil-101/`, its package name is
+`@workspace/phil-101`, the OpenAPI description says "Philosophy 101 course
+API", and several UI strings refer to philosophy. The CURRICULUM CONTENT is
+unambiguously Psychology (see the 13-module list below; source file
+`attached_assets/Clean_Psych_101_Course_Book.docx`). When working on the app,
+treat the subject as Psychology; the "phil"/"Philosophy" tokens are inherited
+from an earlier project name and should be renamed in any user-facing copy you
+touch. Identifiers like the directory name, package name, and DB column values
+are NOT yet renamed — be deliberate before changing them, because the artifact
+manifest, workflows, and module IDs (d1..d7, e1..e5, tp) all encode the old
+name implicitly.
 
 ═══════════════════════════════════════════════════════════════════════════════
 REPO LAYOUT (high level)
@@ -181,10 +198,22 @@ It requires BOTH env vars (throws on import if either is missing):
   • AI_INTEGRATIONS_ANTHROPIC_API_KEY    (Replit-managed key)
 Call sites:
   • tutor.ts:54        claude-sonnet-4-5  max=1024   Tutor SSE stream per module
-  • tutor.ts:101       claude-sonnet-4-5  max=600    Critique exercise (writes a deliberately weak answer)
-  • drafts.ts:48       claude-sonnet-4-5  max=800    One-shot draft feedback (5 sections)
-  • ai-actions.ts:40   claude-sonnet-4-5  max=1024   Inline actions (study-guide, outline, flashcards, …)
-  • diagnostic.ts:314  claude-haiku-4-5   max=16     Roundtrip ping ("Say 'ok'")
+                       System prompt: a Psychology tutor that helps the student
+                       explore the module's objectives Socratically WITHOUT
+                       giving away the answer to the assignment.
+  • tutor.ts:101       claude-sonnet-4-5  max=600    Critique exercise — generates
+                       a deliberately weak Psychology answer the student must
+                       diagnose and improve.
+  • drafts.ts:48       claude-sonnet-4-5  max=800    One-shot draft feedback in
+                       5 structured sections (clarity, evidence, structure,
+                       psychological accuracy, suggested next step).
+  • ai-actions.ts:40   claude-sonnet-4-5  max=1024   Inline actions (study-guide,
+                       outline, flashcards, …) grounded in the module's reading.
+  • diagnostic.ts:314  claude-haiku-4-5   max=16     Roundtrip ping ("Say 'ok'").
+
+⚠ All system prompts currently say "philosophy" / "philosophy tutor" in places.
+For a clean rename, search server-side for /philosoph/i and update to
+"psychology". See "Known gaps" at the bottom.
 
 THE INTEGRITY CANVAS (THE differentiator — components/integrity-canvas.tsx)
 A two-box workflow inside `/modules/:id`:
@@ -393,8 +422,10 @@ conversations / messages              (schema/conversations.ts, messages.ts)
   future cleanup if no consumers appear.
 
 ═══════════════════════════════════════════════════════════════════════════════
-CURRICULUM (13 modules, source = artifacts/api-server/src/lib/curriculum.ts,
-            mirrored to artifacts/phil-101/src/data/curriculum.ts)
+CURRICULUM — 13 PSYCHOLOGY MODULES
+(source = artifacts/api-server/src/lib/curriculum.ts,
+ mirrored to artifacts/phil-101/src/data/curriculum.ts,
+ original source-of-truth = attached_assets/Clean_Psych_101_Course_Book.docx)
 ═══════════════════════════════════════════════════════════════════════════════
 
 Each module: { id, number, title, points, type, objectives[], reading, assignment, modelResponse }
@@ -725,6 +756,22 @@ KNOWN GAPS / GOOD CANDIDATES FOR FINE-TUNING
   events are a strict superset; consolidating would shrink payload size and
   simplify analyzer code, but requires a coordinated migration of
   activityReport.ts.
+
+• SUBJECT/NAME MISMATCH — the codebase says "philosophy" but teaches
+  psychology. To clean this up cohesively:
+    1. UI strings: grep -ri 'philosoph' artifacts/phil-101/src — rewrite to
+       "psychology" / "Psychology 101".
+    2. Server strings & system prompts: grep -ri 'philosoph' artifacts/api-server/src
+       — rewrite. The Anthropic system prompts in tutor.ts, drafts.ts,
+       ai-actions.ts, and tutor.ts (critique) all mention philosophy.
+    3. OpenAPI description: lib/api-spec/openapi.yaml line 6 ("Philosophy 101
+       course API") — rewrite to Psychology 101.
+    4. Artifact title: artifacts/phil-101/.replit-artifact/artifact.toml
+       sets `title = "Philosophy 101"` — rewrite to Psychology 101.
+    5. Directory/package rename (`artifacts/phil-101` → `artifacts/psych-101`
+       and `@workspace/phil-101` → `@workspace/psych-101`) is a bigger change
+       that touches workflows, the artifact registry, the R1 harness defaults,
+       pnpm-lock.yaml, and any deployment configs. Leave for a separate pass.
 
 ═══════════════════════════════════════════════════════════════════════════════
 END OF BLUEPRINT
