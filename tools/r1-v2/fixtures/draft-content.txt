@@ -1,0 +1,7 @@
+Branches of psychology — first draft
+
+Psychology is split into several overlapping branches that disagree less about subject matter than about which level of explanation is the most useful. Biological psychology looks at the nervous system and tries to explain behavior in terms of brain regions, neurotransmitters, and circuits. Cognitive psychology brackets the hardware and treats the mind as an information-processing system, asking how perception, memory, and reasoning could be implemented in principle. Behavioral psychology, which was the dominant approach in the early twentieth century, restricts itself to observable stimulus-response relationships and is suspicious of inferences about hidden mental states. Developmental psychology asks how these capacities emerge across the lifespan, social psychology asks how they are shaped by context and group membership, and clinical psychology applies the whole synthesis to suffering and treatment.
+
+The branches are usually presented as parallel, but in practice a working psychologist borrows freely across them. A clinician treating a patient with PTSD might draw on biological evidence (HPA-axis dysregulation), cognitive theory (intrusive memory mechanisms), and behavioral protocols (graded exposure) within a single session. The boundaries are scholarly bookkeeping; the phenomena cross them.
+
+(Draft is intentionally short — the real submission should expand on at least one branch in detail.)

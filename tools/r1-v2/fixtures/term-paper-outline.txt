@@ -1,0 +1,30 @@
+Term Paper Outline — The Reliability of Eyewitness Memory in Criminal Proceedings
+
+Thesis: Eyewitness testimony is treated by courts and juries as among the most persuasive forms of evidence, but a forty-year program of memory research, beginning with Loftus and Palmer (1974) and extending through Wells and colleagues' work on suggestive lineup procedures, has shown that the underlying memory traces are reconstructive, malleable, and routinely contaminated by post-event information. The paper argues that the legal system's reforms have lagged behind the science, and proposes three procedural changes that follow directly from the experimental record.
+
+I. The reconstructive model of memory
+   A. Bartlett's "schema" experiments and the move away from a recording-tape metaphor
+   B. Loftus and Palmer (1974) — verb choice shifts speed estimates and downstream "broken glass" memories
+   C. Misinformation effect: Loftus, Miller, and Burns (1978); subsequent meta-analyses
+
+II. Mechanisms of contamination
+   A. Source-monitoring errors (Johnson, Hashtroudi, Lindsay 1993)
+   B. Co-witness contamination and the social reinforcement of false detail
+   C. Confidence inflation across repeated retellings — the Wells & Bradfield post-identification feedback effect
+
+III. The criminal-justice surface
+   A. Innocence Project data: misidentification appears in roughly 70% of DNA exonerations
+   B. The Ronald Cotton / Jennifer Thompson case as a high-fidelity illustration
+   C. Why jurors over-weight confidence even when instructed otherwise
+
+IV. Procedural reforms with empirical backing
+   A. Sequential (rather than simultaneous) lineups
+   B. Double-blind administration to prevent unintentional cueing
+   C. Confidence statements collected at the moment of identification, not at trial
+
+V. Counter-arguments and limits
+   A. The accuracy-confidence relationship is stronger under pristine conditions than the older literature suggested
+   B. Trade-offs: sequential lineups reduce false IDs but also reduce true IDs
+   C. The reform agenda is about calibration, not abolition
+
+VI. Conclusion: from cognitive science to courtroom practice

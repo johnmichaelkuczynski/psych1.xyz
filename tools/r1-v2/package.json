@@ -1,0 +1,16 @@
+{
+  "name": "r1-v2-synthetic-student",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "R1-v2 — synthetic student beta-tester for Psychology 101 (the app inheriting the phil-101 directory name). Standalone Node project, not a pnpm workspace member.",
+  "main": "run.mjs",
+  "scripts": {
+    "start": "node run.mjs",
+    "smoke": "MAX_MODULES=2 SKIP_FUNCTIONS=11,12,14,17 node run.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "playwright": "^1.49.0"
+  }
+}
